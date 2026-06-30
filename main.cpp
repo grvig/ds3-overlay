@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <tlhelp32.h>
 #include <iostream>
+#include <cstdint>
 
 DWORD FindProcessId(const wchar_t* processName) {
     DWORD pid = 0;
@@ -87,6 +88,34 @@ int main() {
     } else {
         std::cout << "Unexpected bytes, something is off." << std::endl;
     }
+
+    // Pointer chain for the player's souls count, sourced from the
+    // darksoulsiii-practice-tool project's offset tables. Offset is specific
+    // to game version 1.15.0.0 (checked via the exe's FileVersion) and will
+    // need updating if the game version differs.
+    const uintptr_t BASE_A_OFFSET = 0x4740178;
+
+    uintptr_t baseA = (uintptr_t)moduleBase + BASE_A_OFFSET;
+
+    uintptr_t ptr1 = 0;
+    ReadProcessMemory(process, (LPCVOID)baseA, &ptr1, sizeof(ptr1), &bytesRead);
+    std::cout << "ptr1 (base_a deref): 0x" << std::hex << ptr1 << std::dec << std::endl;
+
+    uintptr_t ptr2Addr = ptr1 + 0x10;
+    uintptr_t ptr2 = 0;
+    ReadProcessMemory(process, (LPCVOID)ptr2Addr, &ptr2, sizeof(ptr2), &bytesRead);
+    std::cout << "ptr2 (player struct ptr): 0x" << std::hex << ptr2 << std::dec << std::endl;
+
+    uintptr_t soulsAddr = ptr2 + 0x74;
+    std::cout << "soulsAddr: 0x" << std::hex << soulsAddr << std::dec << std::endl;
+    uint32_t souls = 0;
+    if (!ReadProcessMemory(process, (LPCVOID)soulsAddr, &souls, sizeof(souls), &bytesRead)) {
+        std::cout << "Failed to read souls count. Error code: " << GetLastError() << std::endl;
+        CloseHandle(process);
+        return 1;
+    }
+
+    std::cout << "Current souls: " << souls << std::endl;
 
     CloseHandle(process);
     return 0;
