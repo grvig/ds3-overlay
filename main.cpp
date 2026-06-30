@@ -2,6 +2,9 @@
 #include <tlhelp32.h>
 #include <iostream>
 #include <cstdint>
+#include <string>
+#include <sstream>
+#include <vector>
 
 DWORD FindProcessId(const wchar_t* processName) {
     DWORD pid = 0;
@@ -26,7 +29,7 @@ DWORD FindProcessId(const wchar_t* processName) {
     return pid;
 }
 
-BYTE* FindModuleBaseAddress(DWORD pid, const wchar_t* moduleName) {
+BYTE* FindModuleBaseAddress(DWORD pid, const wchar_t* moduleName, DWORD* outModuleSize = nullptr) {
     BYTE* base = nullptr;
     HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid);
     if (snapshot == INVALID_HANDLE_VALUE) {
@@ -40,6 +43,9 @@ BYTE* FindModuleBaseAddress(DWORD pid, const wchar_t* moduleName) {
         do {
             if (_wcsicmp(entry.szModule, moduleName) == 0) {
                 base = entry.modBaseAddr;
+                if (outModuleSize != nullptr) {
+                    *outModuleSize = entry.modBaseSize;
+                }
                 break;
             }
         } while (Module32NextW(snapshot, &entry));
@@ -47,6 +53,70 @@ BYTE* FindModuleBaseAddress(DWORD pid, const wchar_t* moduleName) {
 
     CloseHandle(snapshot);
     return base;
+}
+
+// Parses a Cheat Engine-style AOB pattern string, e.g. "48 8B 0D ?? ?? ?? ??".
+// A value of -1 in the returned vector marks a wildcard byte.
+std::vector<int> ParsePattern(const std::string& patternStr) {
+    std::vector<int> pattern;
+    std::istringstream stream(patternStr);
+    std::string token;
+    while (stream >> token) {
+        if (token == "??" || token == "?") {
+            pattern.push_back(-1);
+        } else {
+            pattern.push_back(std::stoi(token, nullptr, 16));
+        }
+    }
+    return pattern;
+}
+
+bool MatchesAt(const std::vector<BYTE>& buffer, size_t offset, const std::vector<int>& pattern) {
+    for (size_t j = 0; j < pattern.size(); j++) {
+        if (pattern[j] != -1 && buffer[offset + j] != (BYTE)pattern[j]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Scans the target process's memory in the [moduleBase, moduleBase + moduleSize)
+// range for the first occurrence of the given byte pattern. Walks committed,
+// readable memory regions individually via VirtualQueryEx so gaps or
+// protected pages in the middle of the module don't abort the whole scan.
+// Returns the address of the match, or nullptr if not found.
+BYTE* FindPattern(HANDLE process, BYTE* moduleBase, SIZE_T moduleSize, const std::vector<int>& pattern) {
+    BYTE* regionStart = moduleBase;
+    BYTE* moduleEnd = moduleBase + moduleSize;
+
+    while (regionStart < moduleEnd) {
+        MEMORY_BASIC_INFORMATION mbi;
+        if (VirtualQueryEx(process, regionStart, &mbi, sizeof(mbi)) == 0) {
+            break;
+        }
+
+        SIZE_T regionSize = mbi.RegionSize;
+        BYTE* nextRegionStart = (BYTE*)mbi.BaseAddress + regionSize;
+
+        bool readable = mbi.State == MEM_COMMIT &&
+            (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) == 0;
+
+        if (readable) {
+            std::vector<BYTE> buffer(regionSize);
+            SIZE_T bytesRead = 0;
+            if (ReadProcessMemory(process, mbi.BaseAddress, buffer.data(), regionSize, &bytesRead) && bytesRead >= pattern.size()) {
+                for (size_t i = 0; i + pattern.size() <= bytesRead; i++) {
+                    if (MatchesAt(buffer, i, pattern)) {
+                        return (BYTE*)mbi.BaseAddress + i;
+                    }
+                }
+            }
+        }
+
+        regionStart = nextRegionStart;
+    }
+
+    return nullptr;
 }
 
 int main() {
@@ -116,6 +186,25 @@ int main() {
     }
 
     std::cout << "Current souls: " << souls << std::endl;
+
+    // Test the AOB scanner against a known pattern (from The Grand Archives'
+    // DS3 Cheat Engine table) that locates SprjEventFlagMan, the game's
+    // event flag manager. This is just confirming the scanner works -
+    // actually reading a flag through it is the next step.
+    DWORD moduleSize = 0;
+    FindModuleBaseAddress(pid, targetProcess, &moduleSize);
+
+    std::vector<int> eventFlagManPattern = ParsePattern(
+        "48 8B 0D ?? ?? ?? ?? 44 0F B6 CB 41 B8 07 00 00 00 8B D6"
+    );
+    BYTE* found = FindPattern(process, moduleBase, moduleSize, eventFlagManPattern);
+    if (found == nullptr) {
+        std::cout << "Pattern not found." << std::endl;
+    } else {
+        std::cout << "Pattern found at: 0x" << std::hex << (uintptr_t)found
+                   << " (module offset 0x" << ((uintptr_t)found - (uintptr_t)moduleBase) << ")"
+                   << std::dec << std::endl;
+    }
 
     CloseHandle(process);
     return 0;
