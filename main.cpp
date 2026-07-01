@@ -134,6 +134,71 @@ BYTE* ResolveRipRelative(HANDLE process, BYTE* instructionAddr, int dispOffset, 
     return instructionAddr + instructionLength + disp;
 }
 
+// Appends the raw bytes of a value (e.g. a number or address) to a byte list.
+template <typename T>
+void AppendBytes(std::vector<BYTE>& out, T value) {
+    BYTE* asBytes = (BYTE*)&value;
+    for (size_t i = 0; i < sizeof(T); i++) {
+        out.push_back(asBytes[i]);
+    }
+}
+
+// Builds a tiny piece of machine code that calls a function of the shape
+// "u8 get_event_flag(uintptr_t eventFlagMan, uint32_t flagId)" inside the
+// game, and stores the single-byte result at resultAddr. This is what lets
+// us ask the game itself "is this flag set?" instead of guessing where that
+// data lives in memory.
+std::vector<BYTE> BuildGetEventFlagShellcode(BYTE* functionAddr, uintptr_t eventFlagMan, uint32_t flagId, BYTE* resultAddr) {
+    std::vector<BYTE> code;
+
+    code.push_back(0x48); code.push_back(0xB9);           // mov rcx, <eventFlagMan>
+    AppendBytes(code, eventFlagMan);
+
+    code.push_back(0xBA);                                 // mov edx, <flagId>
+    AppendBytes(code, flagId);
+
+    code.push_back(0x48); code.push_back(0x83); code.push_back(0xEC); code.push_back(0x28); // sub rsp, 0x28
+
+    code.push_back(0x48); code.push_back(0xB8);           // mov rax, <functionAddr>
+    AppendBytes(code, (uintptr_t)functionAddr);
+
+    code.push_back(0xFF); code.push_back(0xD0);           // call rax
+
+    code.push_back(0x49); code.push_back(0xB8);           // mov r8, <resultAddr>
+    AppendBytes(code, (uintptr_t)resultAddr);
+
+    code.push_back(0x41); code.push_back(0x88); code.push_back(0x00); // mov [r8], al
+
+    code.push_back(0x48); code.push_back(0x83); code.push_back(0xC4); code.push_back(0x28); // add rsp, 0x28
+    code.push_back(0xC3);                                  // ret
+
+    return code;
+}
+
+// Writes the shellcode into the game's memory, tells Windows to run it as a
+// new thread inside the game's process, waits for it to finish, then reads
+// back the one-byte result it wrote.
+uint8_t CallGetEventFlag(HANDLE process, BYTE* remoteBuffer, BYTE* functionAddr, uintptr_t eventFlagMan, uint32_t flagId) {
+    BYTE* codeAddr = remoteBuffer;
+    BYTE* resultAddr = remoteBuffer + 0x100;
+
+    std::vector<BYTE> shellcode = BuildGetEventFlagShellcode(functionAddr, eventFlagMan, flagId, resultAddr);
+    WriteProcessMemory(process, codeAddr, shellcode.data(), shellcode.size(), nullptr);
+
+    HANDLE thread = CreateRemoteThread(process, nullptr, 0, (LPTHREAD_START_ROUTINE)codeAddr, nullptr, 0, nullptr);
+    if (thread == nullptr) {
+        std::cout << "Failed to start remote thread. Error code: " << GetLastError() << std::endl;
+        return 0;
+    }
+    WaitForSingleObject(thread, INFINITE);
+    CloseHandle(thread);
+
+    uint8_t result = 0;
+    SIZE_T bytesRead = 0;
+    ReadProcessMemory(process, resultAddr, &result, sizeof(result), &bytesRead);
+    return result;
+}
+
 int main() {
     const wchar_t* targetProcess = L"DarkSoulsIII.exe";
 
@@ -291,8 +356,19 @@ int main() {
     }
     std::cout << "Allocated memory in game process at: 0x" << std::hex << (uintptr_t)remoteBuffer << std::dec << std::endl;
 
+    // Ask the game itself whether specific event flags are set, by making it
+    // run its own get_event_flag function for us. Flag IDs come from public
+    // DS3 modding references.
+    const uint32_t IUDEX_GUNDYR_DEFEATED_FLAG = 14000800; // should read true - already beaten
+    const uint32_t SOUL_OF_CINDER_DEFEATED_FLAG = 14100800; // should read false - early save
+
+    uint8_t gundyrDefeated = CallGetEventFlag(process, (BYTE*)remoteBuffer, getEventFlagAddr, eventFlagMan, IUDEX_GUNDYR_DEFEATED_FLAG);
+    std::cout << "Iudex Gundyr defeated: " << (gundyrDefeated ? "true" : "false") << std::endl;
+
+    uint8_t socDefeated = CallGetEventFlag(process, (BYTE*)remoteBuffer, getEventFlagAddr, eventFlagMan, SOUL_OF_CINDER_DEFEATED_FLAG);
+    std::cout << "Soul of Cinder defeated: " << (socDefeated ? "true" : "false") << std::endl;
+
     VirtualFreeEx(process, remoteBuffer, 0, MEM_RELEASE);
-    std::cout << "Freed the allocated memory." << std::endl;
 
     CloseHandle(process);
     return 0;
