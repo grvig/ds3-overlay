@@ -119,6 +119,21 @@ BYTE* FindPattern(HANDLE process, BYTE* moduleBase, SIZE_T moduleSize, const std
     return nullptr;
 }
 
+// Many "find this game system" patterns land on a CPU instruction that loads
+// an address relative to itself (this is how 64-bit programs often reference
+// global data). This resolves that into the actual absolute address it points to.
+// instructionAddr = where the pattern match started.
+// dispOffset = how many bytes into the instruction the 4-byte relative offset is.
+// instructionLength = total length of the instruction in bytes.
+BYTE* ResolveRipRelative(HANDLE process, BYTE* instructionAddr, int dispOffset, int instructionLength) {
+    int32_t disp = 0;
+    SIZE_T bytesRead = 0;
+    if (!ReadProcessMemory(process, instructionAddr + dispOffset, &disp, sizeof(disp), &bytesRead)) {
+        return nullptr;
+    }
+    return instructionAddr + instructionLength + disp;
+}
+
 int main() {
     const wchar_t* targetProcess = L"DarkSoulsIII.exe";
 
@@ -200,11 +215,63 @@ int main() {
     BYTE* found = FindPattern(process, moduleBase, moduleSize, eventFlagManPattern);
     if (found == nullptr) {
         std::cout << "Pattern not found." << std::endl;
-    } else {
-        std::cout << "Pattern found at: 0x" << std::hex << (uintptr_t)found
-                   << " (module offset 0x" << ((uintptr_t)found - (uintptr_t)moduleBase) << ")"
-                   << std::dec << std::endl;
+        CloseHandle(process);
+        return 1;
     }
+    std::cout << "Pattern found at: 0x" << std::hex << (uintptr_t)found
+               << " (module offset 0x" << ((uintptr_t)found - (uintptr_t)moduleBase) << ")"
+               << std::dec << std::endl;
+
+    // The matched instruction is "mov rcx, [some address near here]" - resolve
+    // that into the actual address of SprjEventFlagMan (a pointer that itself
+    // points to the block of memory holding all of the game's event flags).
+    BYTE* eventFlagManPtrAddr = ResolveRipRelative(process, found, 3, 7);
+    std::cout << "SprjEventFlagMan pointer lives at: 0x" << std::hex << (uintptr_t)eventFlagManPtrAddr << std::dec << std::endl;
+
+    uintptr_t eventFlagMan = 0;
+    ReadProcessMemory(process, eventFlagManPtrAddr, &eventFlagMan, sizeof(eventFlagMan), &bytesRead);
+    std::cout << "SprjEventFlagMan: 0x" << std::hex << eventFlagMan << std::dec << std::endl;
+
+    // Double-check our result using a second, completely different pattern
+    // (sourced from the SoulSplitter project) that also leads to
+    // SprjEventFlagMan. If both independent patterns agree on the same
+    // address, that's strong confirmation we found the right thing.
+    std::vector<int> eventFlagManPattern2 = ParsePattern(
+        "48 C7 05 ?? ?? ?? ?? 00 00 00 00 48 8B 7C 24 38 C7 46 54 FF FF FF FF 48 83 C4 20 5E C3"
+    );
+    BYTE* found2 = FindPattern(process, moduleBase, moduleSize, eventFlagManPattern2);
+    if (found2 == nullptr) {
+        std::cout << "Second pattern not found." << std::endl;
+        CloseHandle(process);
+        return 1;
+    }
+
+    BYTE* eventFlagManPtrAddr2 = ResolveRipRelative(process, found2, 3, 11);
+    uintptr_t eventFlagMan2 = 0;
+    ReadProcessMemory(process, eventFlagManPtrAddr2, &eventFlagMan2, sizeof(eventFlagMan2), &bytesRead);
+
+    std::cout << "SprjEventFlagMan (via 2nd pattern): 0x" << std::hex << eventFlagMan2 << std::dec << std::endl;
+    if (eventFlagMan == eventFlagMan2) {
+        std::cout << "Both patterns agree - address is confirmed correct." << std::endl;
+    } else {
+        std::cout << "Mismatch! Something is wrong with one of the patterns." << std::endl;
+    }
+
+    // Rather than guess the exact byte/bit layout of the flag data ourselves
+    // (which we tried and got wrong earlier), find the game's own built-in
+    // function that checks a flag's state. This is a recognizable chunk of
+    // machine code the game uses internally, found the same way we found
+    // everything else: searching memory for a distinctive byte pattern.
+    std::vector<int> getEventFlagPattern = ParsePattern(
+        "40 53 48 83 EC 20 80 B9 28 02 00 00 00 8B DA 74 4D"
+    );
+    BYTE* getEventFlagAddr = FindPattern(process, moduleBase, moduleSize, getEventFlagPattern);
+    if (getEventFlagAddr == nullptr) {
+        std::cout << "get_event_flag function not found." << std::endl;
+        CloseHandle(process);
+        return 1;
+    }
+    std::cout << "get_event_flag function address: 0x" << std::hex << (uintptr_t)getEventFlagAddr << std::dec << std::endl;
 
     CloseHandle(process);
     return 0;
