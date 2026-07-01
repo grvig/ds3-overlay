@@ -144,7 +144,13 @@ int main() {
     }
     std::cout << "Found DarkSoulsIII.exe with PID " << pid << std::endl;
 
-    HANDLE process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+    // Also request permission to allocate/write memory and start a thread in
+    // the target process - needed for the upcoming step where we make the
+    // game run a small snippet of code for us.
+    HANDLE process = OpenProcess(
+        PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | PROCESS_VM_OPERATION |
+        PROCESS_VM_WRITE | PROCESS_CREATE_THREAD,
+        FALSE, pid);
     if (process == NULL) {
         std::cout << "Failed to open process handle. Error code: " << GetLastError() << std::endl;
         return 1;
@@ -272,6 +278,21 @@ int main() {
         return 1;
     }
     std::cout << "get_event_flag function address: 0x" << std::hex << (uintptr_t)getEventFlagAddr << std::dec << std::endl;
+
+    // Reserve a small block of memory inside the game's own process. This is
+    // where we'll later place a tiny snippet of code for the game to run.
+    // Nothing is written or executed here yet - this just proves we can
+    // carve out space for it.
+    LPVOID remoteBuffer = VirtualAllocEx(process, nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    if (remoteBuffer == nullptr) {
+        std::cout << "Failed to allocate memory in the game process. Error code: " << GetLastError() << std::endl;
+        CloseHandle(process);
+        return 1;
+    }
+    std::cout << "Allocated memory in game process at: 0x" << std::hex << (uintptr_t)remoteBuffer << std::dec << std::endl;
+
+    VirtualFreeEx(process, remoteBuffer, 0, MEM_RELEASE);
+    std::cout << "Freed the allocated memory." << std::endl;
 
     CloseHandle(process);
     return 0;
