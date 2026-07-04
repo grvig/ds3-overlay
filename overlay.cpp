@@ -21,12 +21,24 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             PAINTSTRUCT ps;
             HDC hdc = BeginPaint(hwnd, &ps);
 
-            // A small red box, just so we can still see the window is there
-            // once the rest of it turns invisible.
-            HBRUSH redBrush = CreateSolidBrush(RGB(200, 0, 0));
-            RECT box = { 20, 20, 120, 70 };
-            FillRect(hdc, &box, redBrush);
-            DeleteObject(redBrush);
+            // Draw plain readable text on top of the (invisible) background.
+            // This is a placeholder - later this text will come from the
+            // game's live memory instead of being hardcoded here.
+            SetBkMode(hdc, TRANSPARENT);
+            SetTextColor(hdc, RGB(255, 255, 0));
+
+            HFONT font = CreateFont(
+                24, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+                ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI"
+            );
+            HFONT oldFont = (HFONT)SelectObject(hdc, font);
+
+            RECT textRect = { 20, 20, 380, 180 };
+            DrawText(hdc, L"Iudex Gundyr: Defeated", -1, &textRect, DT_LEFT | DT_TOP);
+
+            SelectObject(hdc, oldFont);
+            DeleteObject(font);
 
             EndPaint(hwnd, &ps);
             return 0;
