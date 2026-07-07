@@ -16,7 +16,8 @@ bool g_bossDefeated[BOSS_COUNT] = {};
 const UINT_PTR TIMER_ID = 1;
 const int LINE_HEIGHT = 26;
 const int WINDOW_WIDTH = 400;
-const int WINDOW_HEIGHT = 40 + BOSS_COUNT * LINE_HEIGHT;
+const int SUMMARY_HEIGHT = LINE_HEIGHT + 10;
+const int WINDOW_HEIGHT = 40 + SUMMARY_HEIGHT + BOSS_COUNT * LINE_HEIGHT;
 
 // Renders the current frame into a true per-pixel-transparent bitmap and
 // hands it to Windows as the window's whole appearance. Unlike the old
@@ -55,9 +56,22 @@ void RenderOverlay(HWND hwnd) {
         RECT textRect = { 20, 20, 380, 60 };
         DrawText(memDC, L"Waiting for Dark Souls III...", -1, &textRect, DT_LEFT | DT_TOP);
     } else {
+        int defeatedCount = 0;
+        for (int i = 0; i < BOSS_COUNT; i++) {
+            if (g_bossDefeated[i]) {
+                defeatedCount++;
+            }
+        }
+
+        std::wstring summary = L"Bosses Defeated: " + std::to_wstring(defeatedCount) + L" / " + std::to_wstring(BOSS_COUNT);
+        SetTextColor(memDC, RGB(255, 255, 0));
+        RECT summaryRect = { 20, 20, 380, 20 + SUMMARY_HEIGHT };
+        DrawText(memDC, summary.c_str(), -1, &summaryRect, DT_LEFT | DT_TOP);
+
+        int listTop = 20 + SUMMARY_HEIGHT;
         for (int i = 0; i < BOSS_COUNT; i++) {
             SetTextColor(memDC, g_bossDefeated[i] ? RGB(0, 255, 0) : RGB(255, 255, 255));
-            RECT lineRect = { 20, 20 + i * LINE_HEIGHT, 380, 20 + (i + 1) * LINE_HEIGHT };
+            RECT lineRect = { 20, listTop + i * LINE_HEIGHT, 380, listTop + (i + 1) * LINE_HEIGHT };
             DrawText(memDC, BOSS_LIST[i].name, -1, &lineRect, DT_LEFT | DT_TOP);
         }
     }
