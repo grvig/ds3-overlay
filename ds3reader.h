@@ -209,6 +209,7 @@ struct Ds3Connection {
     uintptr_t eventFlagMan = 0;
     BYTE* getEventFlagAddr = nullptr;
     LPVOID remoteBuffer = nullptr;
+    BYTE* moduleBase = nullptr;
 };
 
 bool ConnectToDs3(Ds3Connection& conn) {
@@ -232,6 +233,7 @@ bool ConnectToDs3(Ds3Connection& conn) {
     if (moduleBase == nullptr) {
         return false;
     }
+    conn.moduleBase = moduleBase;
 
     std::vector<int> eventFlagManPattern = ParsePattern(
         "48 8B 0D ?? ?? ?? ?? 44 0F B6 CB 41 B8 07 00 00 00 8B D6"
@@ -265,6 +267,24 @@ bool ConnectToDs3(Ds3Connection& conn) {
 
 uint8_t ReadEventFlag(const Ds3Connection& conn, uint32_t flagId) {
     return CallGetEventFlag(conn.process, (BYTE*)conn.remoteBuffer, conn.getEventFlagAddr, conn.eventFlagMan, flagId);
+}
+
+// Reads the player's current souls count via the same pointer chain
+// discovered on day 1. Specific to game version 1.15.0.0.
+uint32_t ReadSouls(const Ds3Connection& conn) {
+    const uintptr_t BASE_A_OFFSET = 0x4740178;
+    uintptr_t baseA = (uintptr_t)conn.moduleBase + BASE_A_OFFSET;
+
+    SIZE_T bytesRead = 0;
+    uintptr_t ptr1 = 0;
+    ReadProcessMemory(conn.process, (LPCVOID)baseA, &ptr1, sizeof(ptr1), &bytesRead);
+
+    uintptr_t ptr2 = 0;
+    ReadProcessMemory(conn.process, (LPCVOID)(ptr1 + 0x10), &ptr2, sizeof(ptr2), &bytesRead);
+
+    uint32_t souls = 0;
+    ReadProcessMemory(conn.process, (LPCVOID)(ptr2 + 0x74), &souls, sizeof(souls), &bytesRead);
+    return souls;
 }
 
 // Every main boss in the base game plus both DLCs, and the event flag that

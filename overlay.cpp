@@ -12,9 +12,10 @@
 Ds3Connection g_conn;
 bool g_connected = false;
 bool g_bossDefeated[BOSS_COUNT] = {};
+uint32_t g_souls = 0;
 
 const UINT_PTR TIMER_ID = 1;
-const int LINE_HEIGHT = 26;
+const int LINE_HEIGHT = 20;
 const int WINDOW_WIDTH = 400;
 const int SUMMARY_HEIGHT = LINE_HEIGHT + 10;
 
@@ -33,7 +34,7 @@ int CountSections() {
     return count;
 }
 const int SECTION_COUNT = CountSections();
-const int WINDOW_HEIGHT = 40 + SUMMARY_HEIGHT + BOSS_COUNT * LINE_HEIGHT + SECTION_COUNT * LINE_HEIGHT;
+const int WINDOW_HEIGHT = 40 + LINE_HEIGHT + SUMMARY_HEIGHT + BOSS_COUNT * LINE_HEIGHT + SECTION_COUNT * LINE_HEIGHT;
 
 // Renders the current frame into a true per-pixel-transparent bitmap and
 // hands it to Windows as the window's whole appearance. Unlike the old
@@ -61,7 +62,7 @@ void RenderOverlay(HWND hwnd) {
 
     SetBkMode(memDC, TRANSPARENT);
     HFONT font = CreateFont(
-        18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+        15, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
         ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
         ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Segoe UI"
     );
@@ -79,12 +80,17 @@ void RenderOverlay(HWND hwnd) {
             }
         }
 
+        std::wstring soulsLine = L"Souls: " + std::to_wstring(g_souls);
+        SetTextColor(memDC, RGB(255, 255, 255));
+        RECT soulsRect = { 20, 20, 380, 20 + LINE_HEIGHT };
+        DrawText(memDC, soulsLine.c_str(), -1, &soulsRect, DT_LEFT | DT_TOP);
+
         std::wstring summary = L"Bosses Defeated: " + std::to_wstring(defeatedCount) + L" / " + std::to_wstring(BOSS_COUNT);
         SetTextColor(memDC, RGB(255, 255, 0));
-        RECT summaryRect = { 20, 20, 380, 20 + SUMMARY_HEIGHT };
+        RECT summaryRect = { 20, 20 + LINE_HEIGHT, 380, 20 + LINE_HEIGHT + SUMMARY_HEIGHT };
         DrawText(memDC, summary.c_str(), -1, &summaryRect, DT_LEFT | DT_TOP);
 
-        int y = 20 + SUMMARY_HEIGHT;
+        int y = 20 + LINE_HEIGHT + SUMMARY_HEIGHT;
         const wchar_t* lastSection = nullptr;
         for (int i = 0; i < BOSS_COUNT; i++) {
             if (lastSection == nullptr || wcscmp(lastSection, BOSS_LIST[i].section) != 0) {
@@ -159,6 +165,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 for (int i = 0; i < BOSS_COUNT; i++) {
                     g_bossDefeated[i] = ReadEventFlag(g_conn, BOSS_LIST[i].defeatedFlag);
                 }
+                g_souls = ReadSouls(g_conn);
             }
             RenderOverlay(hwnd);
             return 0;
@@ -184,7 +191,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
         CLASS_NAME,
         L"DS3 Overlay",
         WS_POPUP,
-        100, 100, WINDOW_WIDTH, WINDOW_HEIGHT,
+        10, 10, WINDOW_WIDTH, WINDOW_HEIGHT,
         nullptr, nullptr, hInstance, nullptr
     );
 
