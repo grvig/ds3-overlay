@@ -79,7 +79,15 @@ void RenderOverlay(HWND hwnd) {
     if (!g_connected) {
         SetTextColor(memDC, RGB(255, 255, 0));
         RECT textRect = { 20, 20, 380, 60 };
-        DrawText(memDC, L"Waiting for Dark Souls III...", -1, &textRect, DT_LEFT | DT_TOP);
+
+        std::wstring waitingText = L"Waiting for Dark Souls III...";
+        if (g_firstSeenTick != 0) {
+            DWORD elapsed = GetTickCount() - g_firstSeenTick;
+            DWORD remainingMs = (elapsed < STARTUP_GRACE_MS) ? (STARTUP_GRACE_MS - elapsed) : 0;
+            int remainingSec = (int)((remainingMs + 999) / 1000);
+            waitingText = L"Found game, connecting in " + std::to_wstring(remainingSec) + L"s...";
+        }
+        DrawText(memDC, waitingText.c_str(), -1, &textRect, DT_LEFT | DT_TOP);
     } else {
         int defeatedCount = 0;
         for (int i = 0; i < BOSS_COUNT; i++) {

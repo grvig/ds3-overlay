@@ -206,7 +206,12 @@ uint8_t CallGetEventFlag(HANDLE process, BYTE* remoteBuffer, BYTE* functionAddr,
 // for each boss. Much lighter touch on the game when checking a long list.
 std::vector<uint8_t> CallGetEventFlagsBatch(HANDLE process, BYTE* remoteBuffer, BYTE* functionAddr, uintptr_t eventFlagMan, const std::vector<uint32_t>& flagIds) {
     BYTE* codeAddr = remoteBuffer;
-    BYTE* resultsAddr = remoteBuffer + 0x100;
+    // Each flag check compiles to about 48 bytes of code, so checking many
+    // flags at once produces a lot more code than the single-flag version
+    // did. The results area has to start well past all of that code, or the
+    // still-running code would start overwriting itself with result bytes
+    // mid-execution - which is exactly what was crashing the game.
+    BYTE* resultsAddr = remoteBuffer + 0x800;
 
     std::vector<BYTE> code;
     for (size_t i = 0; i < flagIds.size(); i++) {
