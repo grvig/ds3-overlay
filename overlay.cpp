@@ -46,35 +46,48 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             PAINTSTRUCT ps;
             HDC hdc = BeginPaint(hwnd, &ps);
 
-            // Wipe out whatever was drawn last time before drawing the
-            // current frame, so old and new text don't overlap.
+            // Draw the entire frame off-screen first, then copy it to the
+            // window in one go. Drawing directly to the window (like we did
+            // before) causes a visible blank flash each time it redraws -
+            // this "double buffering" avoids that.
+            RECT clientRect;
+            GetClientRect(hwnd, &clientRect);
+            HDC memDC = CreateCompatibleDC(hdc);
+            HBITMAP memBitmap = CreateCompatibleBitmap(hdc, clientRect.right, clientRect.bottom);
+            HBITMAP oldBitmap = (HBITMAP)SelectObject(memDC, memBitmap);
+
             HBRUSH clearBrush = CreateSolidBrush(TRANSPARENT_KEY);
-            FillRect(hdc, &ps.rcPaint, clearBrush);
+            FillRect(memDC, &clientRect, clearBrush);
             DeleteObject(clearBrush);
 
-            SetBkMode(hdc, TRANSPARENT);
+            SetBkMode(memDC, TRANSPARENT);
 
             HFONT font = CreateFont(
                 18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
                 ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                 CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI"
             );
-            HFONT oldFont = (HFONT)SelectObject(hdc, font);
+            HFONT oldFont = (HFONT)SelectObject(memDC, font);
 
             if (!g_connected) {
-                SetTextColor(hdc, RGB(255, 255, 0));
+                SetTextColor(memDC, RGB(255, 255, 0));
                 RECT textRect = { 20, 20, 380, 60 };
-                DrawText(hdc, L"Waiting for Dark Souls III...", -1, &textRect, DT_LEFT | DT_TOP);
+                DrawText(memDC, L"Waiting for Dark Souls III...", -1, &textRect, DT_LEFT | DT_TOP);
             } else {
                 for (int i = 0; i < BOSS_COUNT; i++) {
-                    SetTextColor(hdc, g_bossDefeated[i] ? RGB(0, 255, 0) : RGB(255, 255, 255));
+                    SetTextColor(memDC, g_bossDefeated[i] ? RGB(0, 255, 0) : RGB(255, 255, 255));
                     RECT lineRect = { 20, 20 + i * LINE_HEIGHT, 380, 20 + (i + 1) * LINE_HEIGHT };
-                    DrawText(hdc, BOSS_LIST[i].name, -1, &lineRect, DT_LEFT | DT_TOP);
+                    DrawText(memDC, BOSS_LIST[i].name, -1, &lineRect, DT_LEFT | DT_TOP);
                 }
             }
 
-            SelectObject(hdc, oldFont);
+            BitBlt(hdc, 0, 0, clientRect.right, clientRect.bottom, memDC, 0, 0, SRCCOPY);
+
+            SelectObject(memDC, oldFont);
             DeleteObject(font);
+            SelectObject(memDC, oldBitmap);
+            DeleteObject(memBitmap);
+            DeleteDC(memDC);
 
             EndPaint(hwnd, &ps);
             return 0;
