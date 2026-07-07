@@ -201,6 +201,52 @@ uint8_t CallGetEventFlag(HANDLE process, BYTE* remoteBuffer, BYTE* functionAddr,
     return result;
 }
 
+// Same idea as CallGetEventFlag, but checks every flag in one go: one write,
+// one thread, one wait - instead of doing that whole round trip separately
+// for each boss. Much lighter touch on the game when checking a long list.
+std::vector<uint8_t> CallGetEventFlagsBatch(HANDLE process, BYTE* remoteBuffer, BYTE* functionAddr, uintptr_t eventFlagMan, const std::vector<uint32_t>& flagIds) {
+    BYTE* codeAddr = remoteBuffer;
+    BYTE* resultsAddr = remoteBuffer + 0x100;
+
+    std::vector<BYTE> code;
+    for (size_t i = 0; i < flagIds.size(); i++) {
+        code.push_back(0x48); code.push_back(0xB9);           // mov rcx, <eventFlagMan>
+        AppendBytes(code, eventFlagMan);
+
+        code.push_back(0xBA);                                 // mov edx, <flagIds[i]>
+        AppendBytes(code, flagIds[i]);
+
+        code.push_back(0x48); code.push_back(0x83); code.push_back(0xEC); code.push_back(0x28); // sub rsp, 0x28
+
+        code.push_back(0x48); code.push_back(0xB8);           // mov rax, <functionAddr>
+        AppendBytes(code, (uintptr_t)functionAddr);
+
+        code.push_back(0xFF); code.push_back(0xD0);           // call rax
+
+        code.push_back(0x49); code.push_back(0xB8);           // mov r8, <resultsAddr + i>
+        AppendBytes(code, (uintptr_t)(resultsAddr + i));
+
+        code.push_back(0x41); code.push_back(0x88); code.push_back(0x00); // mov [r8], al
+
+        code.push_back(0x48); code.push_back(0x83); code.push_back(0xC4); code.push_back(0x28); // add rsp, 0x28
+    }
+    code.push_back(0xC3); // ret, once, at the very end
+
+    WriteProcessMemory(process, codeAddr, code.data(), code.size(), nullptr);
+
+    std::vector<uint8_t> results(flagIds.size(), 0);
+    HANDLE thread = CreateRemoteThread(process, nullptr, 0, (LPTHREAD_START_ROUTINE)codeAddr, nullptr, 0, nullptr);
+    if (thread == nullptr) {
+        return results;
+    }
+    WaitForSingleObject(thread, INFINITE);
+    CloseHandle(thread);
+
+    SIZE_T bytesRead = 0;
+    ReadProcessMemory(process, resultsAddr, results.data(), results.size(), &bytesRead);
+    return results;
+}
+
 // One-time setup: finds the running game, opens a handle to it, and locates
 // SprjEventFlagMan (the game's flag-tracking system) and its get_event_flag
 // function. Returns true if everything was found successfully.
@@ -212,8 +258,10 @@ struct Ds3Connection {
     BYTE* moduleBase = nullptr;
 };
 
+const wchar_t* const DS3_PROCESS_NAME = L"DarkSoulsIII.exe";
+
 bool ConnectToDs3(Ds3Connection& conn) {
-    const wchar_t* targetProcess = L"DarkSoulsIII.exe";
+    const wchar_t* targetProcess = DS3_PROCESS_NAME;
 
     DWORD pid = FindProcessId(targetProcess);
     if (pid == 0) {
@@ -324,3 +372,13 @@ const BossInfo BOSS_LIST[] = {
     { L"Slave Knight Gael", 15110800, L"The Ringed City" },
 };
 const int BOSS_COUNT = sizeof(BOSS_LIST) / sizeof(BOSS_LIST[0]);
+
+// Reads every boss's defeated flag from BOSS_LIST in one batch, instead of
+// one game round-trip per boss.
+std::vector<uint8_t> ReadAllBossFlags(const Ds3Connection& conn) {
+    std::vector<uint32_t> flagIds;
+    for (int i = 0; i < BOSS_COUNT; i++) {
+        flagIds.push_back(BOSS_LIST[i].defeatedFlag);
+    }
+    return CallGetEventFlagsBatch(conn.process, (BYTE*)conn.remoteBuffer, conn.getEventFlagAddr, conn.eventFlagMan, flagIds);
+}

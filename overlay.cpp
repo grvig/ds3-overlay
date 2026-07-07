@@ -14,6 +14,14 @@ bool g_connected = false;
 bool g_bossDefeated[BOSS_COUNT] = {};
 uint32_t g_souls = 0;
 
+// How long to wait after first spotting the game process before we actually
+// attach to it and inject code. Attaching the instant the process appears
+// risks catching the game mid-launch (before its own startup has settled),
+// which seems to have caused it to fail to start on one occasion - this
+// grace period gives it room to finish starting up first.
+DWORD g_firstSeenTick = 0;
+const DWORD STARTUP_GRACE_MS = 8000;
+
 const UINT_PTR TIMER_ID = 1;
 const int LINE_HEIGHT = 20;
 const int WINDOW_WIDTH = 400;
@@ -159,11 +167,22 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             // Re-check every boss's flag periodically so the overlay
             // reflects what's actually happening in the game right now.
             if (!g_connected) {
-                g_connected = ConnectToDs3(g_conn);
+                DWORD pid = FindProcessId(DS3_PROCESS_NAME);
+                if (pid == 0) {
+                    g_firstSeenTick = 0;
+                } else {
+                    if (g_firstSeenTick == 0) {
+                        g_firstSeenTick = GetTickCount();
+                    }
+                    if (GetTickCount() - g_firstSeenTick >= STARTUP_GRACE_MS) {
+                        g_connected = ConnectToDs3(g_conn);
+                    }
+                }
             }
             if (g_connected) {
+                std::vector<uint8_t> flags = ReadAllBossFlags(g_conn);
                 for (int i = 0; i < BOSS_COUNT; i++) {
-                    g_bossDefeated[i] = ReadEventFlag(g_conn, BOSS_LIST[i].defeatedFlag);
+                    g_bossDefeated[i] = flags[i];
                 }
                 g_souls = ReadSouls(g_conn);
             }

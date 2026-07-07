@@ -9,10 +9,12 @@ int main() {
     }
     std::cout << "Connected to DarkSoulsIII.exe." << std::endl;
 
+    std::vector<uint8_t> flags = ReadAllBossFlags(conn);
     for (int i = 0; i < BOSS_COUNT; i++) {
-        uint8_t defeated = ReadEventFlag(conn, BOSS_LIST[i].defeatedFlag);
-        std::wcout << BOSS_LIST[i].name << L": " << (defeated ? L"defeated" : L"not defeated") << std::endl;
+        std::wcout << BOSS_LIST[i].name << L": " << (flags[i] ? L"defeated" : L"not defeated") << std::endl;
     }
+
+    std::cout << "Souls: " << ReadSouls(conn) << std::endl;
 
     VirtualFreeEx(conn.process, conn.remoteBuffer, 0, MEM_RELEASE);
     CloseHandle(conn.process);
