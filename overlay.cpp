@@ -13,13 +13,12 @@
 // just whatever we explicitly draw on top of it.
 const COLORREF TRANSPARENT_KEY = RGB(0, 200, 0);
 
-const uint32_t IUDEX_GUNDYR_DEFEATED_FLAG = 14000800;
-
 Ds3Connection g_conn;
 bool g_connected = false;
-bool g_gundyrDefeated = false;
+bool g_bossDefeated[BOSS_COUNT] = {};
 
 const UINT_PTR TIMER_ID = 1;
+const int LINE_HEIGHT = 26;
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
@@ -29,13 +28,15 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             return 0;
 
         case WM_TIMER: {
-            // Re-check the boss flag periodically so the overlay reflects
-            // what's actually happening in the game right now.
+            // Re-check every boss's flag periodically so the overlay
+            // reflects what's actually happening in the game right now.
             if (!g_connected) {
                 g_connected = ConnectToDs3(g_conn);
             }
             if (g_connected) {
-                g_gundyrDefeated = ReadEventFlag(g_conn, IUDEX_GUNDYR_DEFEATED_FLAG);
+                for (int i = 0; i < BOSS_COUNT; i++) {
+                    g_bossDefeated[i] = ReadEventFlag(g_conn, BOSS_LIST[i].defeatedFlag);
+                }
             }
             InvalidateRect(hwnd, nullptr, FALSE);
             return 0;
@@ -45,33 +46,32 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             PAINTSTRUCT ps;
             HDC hdc = BeginPaint(hwnd, &ps);
 
-            // Wipe out whatever was drawn last time (e.g. the previous
-            // status text) before drawing the current one, so old and new
-            // text don't overlap into an unreadable mess.
+            // Wipe out whatever was drawn last time before drawing the
+            // current frame, so old and new text don't overlap.
             HBRUSH clearBrush = CreateSolidBrush(TRANSPARENT_KEY);
             FillRect(hdc, &ps.rcPaint, clearBrush);
             DeleteObject(clearBrush);
 
             SetBkMode(hdc, TRANSPARENT);
-            SetTextColor(hdc, RGB(255, 255, 0));
 
             HFONT font = CreateFont(
-                24, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+                18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
                 ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                 CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI"
             );
             HFONT oldFont = (HFONT)SelectObject(hdc, font);
 
-            std::wstring statusText;
             if (!g_connected) {
-                statusText = L"Waiting for Dark Souls III...";
+                SetTextColor(hdc, RGB(255, 255, 0));
+                RECT textRect = { 20, 20, 380, 60 };
+                DrawText(hdc, L"Waiting for Dark Souls III...", -1, &textRect, DT_LEFT | DT_TOP);
             } else {
-                statusText = L"Iudex Gundyr: ";
-                statusText += g_gundyrDefeated ? L"Defeated" : L"Not defeated";
+                for (int i = 0; i < BOSS_COUNT; i++) {
+                    SetTextColor(hdc, g_bossDefeated[i] ? RGB(0, 255, 0) : RGB(255, 255, 255));
+                    RECT lineRect = { 20, 20 + i * LINE_HEIGHT, 380, 20 + (i + 1) * LINE_HEIGHT };
+                    DrawText(hdc, BOSS_LIST[i].name, -1, &lineRect, DT_LEFT | DT_TOP);
+                }
             }
-
-            RECT textRect = { 20, 20, 380, 180 };
-            DrawText(hdc, statusText.c_str(), -1, &textRect, DT_LEFT | DT_TOP);
 
             SelectObject(hdc, oldFont);
             DeleteObject(font);
@@ -96,12 +96,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     // WS_EX_LAYERED lets us mark a color as see-through.
     // WS_EX_TRANSPARENT makes mouse clicks pass straight through the window
     // to whatever is underneath it (the game), instead of being caught by us.
+    // Made tall enough to fit the full boss list for now - a later step
+    // will size this automatically instead of a fixed guess.
     HWND hwnd = CreateWindowEx(
         WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TRANSPARENT,
         CLASS_NAME,
         L"DS3 Overlay",
         WS_POPUP,
-        100, 100, 400, 200,
+        100, 100, 400, 40 + BOSS_COUNT * LINE_HEIGHT,
         nullptr, nullptr, hInstance, nullptr
     );
 
