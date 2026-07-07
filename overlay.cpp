@@ -97,6 +97,19 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             return 0;
 
         case WM_TIMER: {
+            // If the game has been closed since our last check, forget the
+            // old connection and go back to "waiting" instead of showing
+            // stale or wrong boss info.
+            if (g_connected) {
+                DWORD exitCode = 0;
+                bool stillRunning = GetExitCodeProcess(g_conn.process, &exitCode) && exitCode == STILL_ACTIVE;
+                if (!stillRunning) {
+                    CloseHandle(g_conn.process);
+                    g_conn = Ds3Connection();
+                    g_connected = false;
+                }
+            }
+
             // Re-check every boss's flag periodically so the overlay
             // reflects what's actually happening in the game right now.
             if (!g_connected) {
