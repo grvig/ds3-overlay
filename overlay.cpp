@@ -17,7 +17,23 @@ const UINT_PTR TIMER_ID = 1;
 const int LINE_HEIGHT = 26;
 const int WINDOW_WIDTH = 400;
 const int SUMMARY_HEIGHT = LINE_HEIGHT + 10;
-const int WINDOW_HEIGHT = 40 + SUMMARY_HEIGHT + BOSS_COUNT * LINE_HEIGHT;
+
+// The boss list is grouped into sections (Base Game, Ashes of Ariandel, The
+// Ringed City) with a header line above each group. Count how many section
+// headers there are so the window is made tall enough to fit them.
+int CountSections() {
+    int count = 0;
+    const wchar_t* lastSection = nullptr;
+    for (int i = 0; i < BOSS_COUNT; i++) {
+        if (lastSection == nullptr || wcscmp(lastSection, BOSS_LIST[i].section) != 0) {
+            count++;
+            lastSection = BOSS_LIST[i].section;
+        }
+    }
+    return count;
+}
+const int SECTION_COUNT = CountSections();
+const int WINDOW_HEIGHT = 40 + SUMMARY_HEIGHT + BOSS_COUNT * LINE_HEIGHT + SECTION_COUNT * LINE_HEIGHT;
 
 // Renders the current frame into a true per-pixel-transparent bitmap and
 // hands it to Windows as the window's whole appearance. Unlike the old
@@ -68,11 +84,21 @@ void RenderOverlay(HWND hwnd) {
         RECT summaryRect = { 20, 20, 380, 20 + SUMMARY_HEIGHT };
         DrawText(memDC, summary.c_str(), -1, &summaryRect, DT_LEFT | DT_TOP);
 
-        int listTop = 20 + SUMMARY_HEIGHT;
+        int y = 20 + SUMMARY_HEIGHT;
+        const wchar_t* lastSection = nullptr;
         for (int i = 0; i < BOSS_COUNT; i++) {
+            if (lastSection == nullptr || wcscmp(lastSection, BOSS_LIST[i].section) != 0) {
+                lastSection = BOSS_LIST[i].section;
+                SetTextColor(memDC, RGB(150, 150, 255));
+                RECT headerRect = { 20, y, 380, y + LINE_HEIGHT };
+                DrawText(memDC, lastSection, -1, &headerRect, DT_LEFT | DT_TOP);
+                y += LINE_HEIGHT;
+            }
+
             SetTextColor(memDC, g_bossDefeated[i] ? RGB(0, 255, 0) : RGB(255, 255, 255));
-            RECT lineRect = { 20, listTop + i * LINE_HEIGHT, 380, listTop + (i + 1) * LINE_HEIGHT };
+            RECT lineRect = { 30, y, 380, y + LINE_HEIGHT };
             DrawText(memDC, BOSS_LIST[i].name, -1, &lineRect, DT_LEFT | DT_TOP);
+            y += LINE_HEIGHT;
         }
     }
 
