@@ -6,12 +6,8 @@
 #endif
 #include <windows.h>
 #include <string>
+#include <cstring>
 #include "ds3reader.h"
-
-// The background is this color, and we tell Windows to treat this exact
-// color as invisible - so the window itself has no visible background,
-// just whatever we explicitly draw on top of it.
-const COLORREF TRANSPARENT_KEY = RGB(0, 200, 0);
 
 Ds3Connection g_conn;
 bool g_connected = false;
@@ -19,6 +15,79 @@ bool g_bossDefeated[BOSS_COUNT] = {};
 
 const UINT_PTR TIMER_ID = 1;
 const int LINE_HEIGHT = 26;
+const int WINDOW_WIDTH = 400;
+const int WINDOW_HEIGHT = 40 + BOSS_COUNT * LINE_HEIGHT;
+
+// Renders the current frame into a true per-pixel-transparent bitmap and
+// hands it to Windows as the window's whole appearance. Unlike the old
+// "treat this one color as invisible" trick, every pixel gets its own real
+// transparency level, so text edges blend cleanly with whatever is behind
+// the overlay instead of picking up a tint from a fake background color.
+void RenderOverlay(HWND hwnd) {
+    HDC screenDC = GetDC(nullptr);
+
+    BITMAPINFO bmi = {};
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = WINDOW_WIDTH;
+    bmi.bmiHeader.biHeight = -WINDOW_HEIGHT; // negative = top-down, easier to reason about
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+
+    void* pixels = nullptr;
+    HDC memDC = CreateCompatibleDC(screenDC);
+    HBITMAP bitmap = CreateDIBSection(screenDC, &bmi, DIB_RGB_COLORS, &pixels, nullptr, 0);
+    HBITMAP oldBitmap = (HBITMAP)SelectObject(memDC, bitmap);
+
+    // Start fully transparent (all zero bytes = black, 0 alpha) everywhere.
+    memset(pixels, 0, WINDOW_WIDTH * WINDOW_HEIGHT * 4);
+
+    SetBkMode(memDC, TRANSPARENT);
+    HFONT font = CreateFont(
+        18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+        ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Segoe UI"
+    );
+    HFONT oldFont = (HFONT)SelectObject(memDC, font);
+
+    if (!g_connected) {
+        SetTextColor(memDC, RGB(255, 255, 0));
+        RECT textRect = { 20, 20, 380, 60 };
+        DrawText(memDC, L"Waiting for Dark Souls III...", -1, &textRect, DT_LEFT | DT_TOP);
+    } else {
+        for (int i = 0; i < BOSS_COUNT; i++) {
+            SetTextColor(memDC, g_bossDefeated[i] ? RGB(0, 255, 0) : RGB(255, 255, 255));
+            RECT lineRect = { 20, 20 + i * LINE_HEIGHT, 380, 20 + (i + 1) * LINE_HEIGHT };
+            DrawText(memDC, BOSS_LIST[i].name, -1, &lineRect, DT_LEFT | DT_TOP);
+        }
+    }
+
+    // GDI only paints the color channels, not transparency. Since we started
+    // from solid black, each pixel's brightness now tells us how much "ink"
+    // is there - use that as its transparency (this also happens to be
+    // exactly the format Windows wants for blending: color pre-multiplied
+    // by transparency).
+    BYTE* bytes = (BYTE*)pixels;
+    for (int i = 0; i < WINDOW_WIDTH * WINDOW_HEIGHT; i++) {
+        BYTE b = bytes[i * 4 + 0];
+        BYTE g = bytes[i * 4 + 1];
+        BYTE r = bytes[i * 4 + 2];
+        BYTE alpha = (b > g ? (b > r ? b : r) : (g > r ? g : r));
+        bytes[i * 4 + 3] = alpha;
+    }
+
+    POINT srcPos = { 0, 0 };
+    SIZE size = { WINDOW_WIDTH, WINDOW_HEIGHT };
+    BLENDFUNCTION blend = { AC_SRC_OVER, 0, 255, AC_SRC_ALPHA };
+    UpdateLayeredWindow(hwnd, screenDC, nullptr, &size, memDC, &srcPos, 0, &blend, ULW_ALPHA);
+
+    SelectObject(memDC, oldFont);
+    DeleteObject(font);
+    SelectObject(memDC, oldBitmap);
+    DeleteObject(bitmap);
+    DeleteDC(memDC);
+    ReleaseDC(nullptr, screenDC);
+}
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
@@ -38,58 +107,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     g_bossDefeated[i] = ReadEventFlag(g_conn, BOSS_LIST[i].defeatedFlag);
                 }
             }
-            InvalidateRect(hwnd, nullptr, FALSE);
-            return 0;
-        }
-
-        case WM_PAINT: {
-            PAINTSTRUCT ps;
-            HDC hdc = BeginPaint(hwnd, &ps);
-
-            // Draw the entire frame off-screen first, then copy it to the
-            // window in one go. Drawing directly to the window (like we did
-            // before) causes a visible blank flash each time it redraws -
-            // this "double buffering" avoids that.
-            RECT clientRect;
-            GetClientRect(hwnd, &clientRect);
-            HDC memDC = CreateCompatibleDC(hdc);
-            HBITMAP memBitmap = CreateCompatibleBitmap(hdc, clientRect.right, clientRect.bottom);
-            HBITMAP oldBitmap = (HBITMAP)SelectObject(memDC, memBitmap);
-
-            HBRUSH clearBrush = CreateSolidBrush(TRANSPARENT_KEY);
-            FillRect(memDC, &clientRect, clearBrush);
-            DeleteObject(clearBrush);
-
-            SetBkMode(memDC, TRANSPARENT);
-
-            HFONT font = CreateFont(
-                18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
-                ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI"
-            );
-            HFONT oldFont = (HFONT)SelectObject(memDC, font);
-
-            if (!g_connected) {
-                SetTextColor(memDC, RGB(255, 255, 0));
-                RECT textRect = { 20, 20, 380, 60 };
-                DrawText(memDC, L"Waiting for Dark Souls III...", -1, &textRect, DT_LEFT | DT_TOP);
-            } else {
-                for (int i = 0; i < BOSS_COUNT; i++) {
-                    SetTextColor(memDC, g_bossDefeated[i] ? RGB(0, 255, 0) : RGB(255, 255, 255));
-                    RECT lineRect = { 20, 20 + i * LINE_HEIGHT, 380, 20 + (i + 1) * LINE_HEIGHT };
-                    DrawText(memDC, BOSS_LIST[i].name, -1, &lineRect, DT_LEFT | DT_TOP);
-                }
-            }
-
-            BitBlt(hdc, 0, 0, clientRect.right, clientRect.bottom, memDC, 0, 0, SRCCOPY);
-
-            SelectObject(memDC, oldFont);
-            DeleteObject(font);
-            SelectObject(memDC, oldBitmap);
-            DeleteObject(memBitmap);
-            DeleteDC(memDC);
-
-            EndPaint(hwnd, &ps);
+            RenderOverlay(hwnd);
             return 0;
         }
     }
@@ -103,20 +121,17 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     wc.lpfnWndProc = WindowProc;
     wc.hInstance = hInstance;
     wc.lpszClassName = CLASS_NAME;
-    wc.hbrBackground = CreateSolidBrush(TRANSPARENT_KEY);
     RegisterClass(&wc);
 
-    // WS_EX_LAYERED lets us mark a color as see-through.
+    // WS_EX_LAYERED lets us give the window true per-pixel transparency.
     // WS_EX_TRANSPARENT makes mouse clicks pass straight through the window
     // to whatever is underneath it (the game), instead of being caught by us.
-    // Made tall enough to fit the full boss list for now - a later step
-    // will size this automatically instead of a fixed guess.
     HWND hwnd = CreateWindowEx(
         WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TRANSPARENT,
         CLASS_NAME,
         L"DS3 Overlay",
         WS_POPUP,
-        100, 100, 400, 40 + BOSS_COUNT * LINE_HEIGHT,
+        100, 100, WINDOW_WIDTH, WINDOW_HEIGHT,
         nullptr, nullptr, hInstance, nullptr
     );
 
@@ -124,9 +139,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
         return 1;
     }
 
-    SetLayeredWindowAttributes(hwnd, TRANSPARENT_KEY, 0, LWA_COLORKEY);
-
     g_connected = ConnectToDs3(g_conn);
+    RenderOverlay(hwnd);
     SetTimer(hwnd, TIMER_ID, 1000, nullptr);
 
     ShowWindow(hwnd, nCmdShow);
