@@ -24,6 +24,9 @@ DWORD g_firstSeenTick = 0;
 const DWORD STARTUP_GRACE_MS = 8000;
 
 const UINT_PTR TIMER_ID = 1;
+const int HOTKEY_TOGGLE_ID = 1;
+const int HOTKEY_QUIT_ID = 2;
+bool g_visible = true;
 const int LINE_HEIGHT = 20;
 const int WINDOW_WIDTH = 400;
 const int SUMMARY_HEIGHT = LINE_HEIGHT + 10;
@@ -158,8 +161,23 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_DESTROY:
             KillTimer(hwnd, TIMER_ID);
+            UnregisterHotKey(hwnd, HOTKEY_TOGGLE_ID);
+            UnregisterHotKey(hwnd, HOTKEY_QUIT_ID);
             PostQuitMessage(0);
             return 0;
+
+        // F10 shows/hides the overlay, F11 closes it. These are registered as
+        // global hotkeys, so they work even while the game has focus - which
+        // matters because the overlay itself can't be clicked.
+        case WM_HOTKEY: {
+            if (wParam == HOTKEY_TOGGLE_ID) {
+                g_visible = !g_visible;
+                ShowWindow(hwnd, g_visible ? SW_SHOWNOACTIVATE : SW_HIDE);
+            } else if (wParam == HOTKEY_QUIT_ID) {
+                DestroyWindow(hwnd);
+            }
+            return 0;
+        }
 
         case WM_TIMER: {
             // If the game has been closed since our last check, forget the
@@ -197,7 +215,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 }
                 g_soulsAvailable = ReadSouls(g_conn, g_souls);
             }
-            RenderOverlay(hwnd);
+            if (g_visible) {
+                RenderOverlay(hwnd);
+            }
             return 0;
         }
     }
@@ -228,6 +248,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     if (hwnd == nullptr) {
         return 1;
     }
+
+    // Global hotkeys, so they work while the game has focus. If another
+    // program has already claimed F10/F11, registration fails - not fatal,
+    // the overlay just runs without them.
+    RegisterHotKey(hwnd, HOTKEY_TOGGLE_ID, 0, VK_F10);
+    RegisterHotKey(hwnd, HOTKEY_QUIT_ID, 0, VK_F11);
 
     g_connected = ConnectToDs3(g_conn);
     RenderOverlay(hwnd);

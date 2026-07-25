@@ -37,6 +37,14 @@ appears in the top-left corner and updates once a second.
 If the game isn't running yet, the overlay shows a waiting message and connects
 on its own once the game appears. If you quit the game, it goes back to waiting.
 
+| Key | Does |
+| --- | --- |
+| `F10` | Show / hide the overlay |
+| `F11` | Close the overlay |
+
+These work while the game has focus - handy, since the overlay is click-through
+and can't be interacted with directly.
+
 ## How it works
 
 Everything is read-only - the overlay never writes to your save file or modifies
