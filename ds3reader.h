@@ -254,6 +254,44 @@ std::vector<uint8_t> CallGetEventFlagsBatch(HANDLE process, BYTE* remoteBuffer, 
     return results;
 }
 
+// Some values (like the souls count) live at a fixed distance from where the
+// game is loaded, but that distance changes between game patches. Each row
+// here is one known game version and where its player data starts. Sourced
+// from the darksoulsiii-practice-tool project's offset tables.
+//
+// Boss tracking doesn't need any of this - it finds what it needs by scanning
+// for byte patterns, which survive version changes.
+struct VersionOffsets {
+    WORD major;
+    WORD minor;
+    WORD patch;
+    uintptr_t baseA;
+};
+
+const VersionOffsets VERSION_TABLE[] = {
+    { 1,  1, 1, 0x4692878 },
+    { 1,  3, 1, 0x469adf8 },
+    { 1,  3, 2, 0x469bdf8 },
+    { 1,  4, 1, 0x469d118 },
+    { 1,  4, 2, 0x469d118 },
+    { 1,  4, 3, 0x469d118 },
+    { 1,  5, 0, 0x46a1218 },
+    { 1,  5, 1, 0x46a0218 },
+    { 1,  6, 0, 0x46a1278 },
+    { 1,  7, 0, 0x46a5ab8 },
+    { 1,  8, 0, 0x4704268 },
+    { 1,  9, 0, 0x47043a8 },
+    { 1, 10, 0, 0x47043a8 },
+    { 1, 11, 0, 0x4737698 },
+    { 1, 12, 0, 0x473a818 },
+    { 1, 13, 0, 0x473e018 },
+    { 1, 14, 0, 0x4740178 },
+    { 1, 15, 0, 0x4740178 },
+    { 1, 15, 1, 0x47572b8 },
+    { 1, 15, 2, 0x47572b8 },
+};
+const int VERSION_COUNT = sizeof(VERSION_TABLE) / sizeof(VERSION_TABLE[0]);
+
 // One-time setup: finds the running game, opens a handle to it, and locates
 // SprjEventFlagMan (the game's flag-tracking system) and its get_event_flag
 // function. Returns true if everything was found successfully.
@@ -263,9 +301,62 @@ struct Ds3Connection {
     BYTE* getEventFlagAddr = nullptr;
     LPVOID remoteBuffer = nullptr;
     BYTE* moduleBase = nullptr;
+
+    // Version of the running game, and the matching offset from the table
+    // above. baseA stays 0 if we're on a version we don't have offsets for -
+    // in that case the souls count is unavailable but bosses still work.
+    WORD versionMajor = 0;
+    WORD versionMinor = 0;
+    WORD versionPatch = 0;
+    uintptr_t baseA = 0;
 };
 
 const wchar_t* const DS3_PROCESS_NAME = L"DarkSoulsIII.exe";
+
+// Reads the version number out of the running game's .exe file. This is the
+// same "File version" you'd see in the file's Properties dialog in Windows.
+bool GetGameVersion(HANDLE process, WORD& major, WORD& minor, WORD& patch) {
+    wchar_t exePath[MAX_PATH] = {};
+    DWORD pathLen = MAX_PATH;
+    if (!QueryFullProcessImageNameW(process, 0, exePath, &pathLen)) {
+        return false;
+    }
+
+    DWORD unusedHandle = 0;
+    DWORD infoSize = GetFileVersionInfoSizeW(exePath, &unusedHandle);
+    if (infoSize == 0) {
+        return false;
+    }
+
+    std::vector<BYTE> infoBuffer(infoSize);
+    if (!GetFileVersionInfoW(exePath, 0, infoSize, infoBuffer.data())) {
+        return false;
+    }
+
+    VS_FIXEDFILEINFO* fileInfo = nullptr;
+    UINT fileInfoLen = 0;
+    if (!VerQueryValueW(infoBuffer.data(), L"\\", (LPVOID*)&fileInfo, &fileInfoLen) || fileInfo == nullptr) {
+        return false;
+    }
+
+    major = HIWORD(fileInfo->dwFileVersionMS);
+    minor = LOWORD(fileInfo->dwFileVersionMS);
+    patch = HIWORD(fileInfo->dwFileVersionLS);
+    return true;
+}
+
+// Looks up the player-data offset for a given game version. Returns 0 if we
+// don't have offsets for that version.
+uintptr_t LookUpBaseAOffset(WORD major, WORD minor, WORD patch) {
+    for (int i = 0; i < VERSION_COUNT; i++) {
+        if (VERSION_TABLE[i].major == major &&
+            VERSION_TABLE[i].minor == minor &&
+            VERSION_TABLE[i].patch == patch) {
+            return VERSION_TABLE[i].baseA;
+        }
+    }
+    return 0;
+}
 
 bool ConnectToDs3(Ds3Connection& conn) {
     const wchar_t* targetProcess = DS3_PROCESS_NAME;
@@ -317,6 +408,12 @@ bool ConnectToDs3(Ds3Connection& conn) {
         return false;
     }
 
+    // Work out which game version is running and pick the matching offsets.
+    // An unknown version isn't fatal - boss tracking doesn't depend on this.
+    if (GetGameVersion(conn.process, conn.versionMajor, conn.versionMinor, conn.versionPatch)) {
+        conn.baseA = LookUpBaseAOffset(conn.versionMajor, conn.versionMinor, conn.versionPatch);
+    }
+
     return true;
 }
 
@@ -324,22 +421,35 @@ uint8_t ReadEventFlag(const Ds3Connection& conn, uint32_t flagId) {
     return CallGetEventFlag(conn.process, (BYTE*)conn.remoteBuffer, conn.getEventFlagAddr, conn.eventFlagMan, flagId);
 }
 
-// Reads the player's current souls count via the same pointer chain
-// discovered on day 1. Specific to game version 1.15.0.0.
-uint32_t ReadSouls(const Ds3Connection& conn) {
-    const uintptr_t BASE_A_OFFSET = 0x4740178;
-    uintptr_t baseA = (uintptr_t)conn.moduleBase + BASE_A_OFFSET;
+// Reads the player's current souls count, following the pointer chain
+// discovered on day 1 from the version-appropriate starting offset. Returns
+// false if we don't have offsets for the running game version, or if the
+// player data isn't loaded yet (e.g. sitting at the main menu).
+bool ReadSouls(const Ds3Connection& conn, uint32_t& outSouls) {
+    if (conn.baseA == 0) {
+        return false;
+    }
+
+    uintptr_t baseA = (uintptr_t)conn.moduleBase + conn.baseA;
 
     SIZE_T bytesRead = 0;
     uintptr_t ptr1 = 0;
-    ReadProcessMemory(conn.process, (LPCVOID)baseA, &ptr1, sizeof(ptr1), &bytesRead);
+    if (!ReadProcessMemory(conn.process, (LPCVOID)baseA, &ptr1, sizeof(ptr1), &bytesRead) || ptr1 == 0) {
+        return false;
+    }
 
     uintptr_t ptr2 = 0;
-    ReadProcessMemory(conn.process, (LPCVOID)(ptr1 + 0x10), &ptr2, sizeof(ptr2), &bytesRead);
+    if (!ReadProcessMemory(conn.process, (LPCVOID)(ptr1 + 0x10), &ptr2, sizeof(ptr2), &bytesRead) || ptr2 == 0) {
+        return false;
+    }
 
     uint32_t souls = 0;
-    ReadProcessMemory(conn.process, (LPCVOID)(ptr2 + 0x74), &souls, sizeof(souls), &bytesRead);
-    return souls;
+    if (!ReadProcessMemory(conn.process, (LPCVOID)(ptr2 + 0x74), &souls, sizeof(souls), &bytesRead)) {
+        return false;
+    }
+
+    outSouls = souls;
+    return true;
 }
 
 // Reads every boss's defeated flag from BOSS_LIST in one batch, instead of

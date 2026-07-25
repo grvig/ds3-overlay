@@ -15,14 +15,14 @@ if errorlevel 1 (
 )
 
 echo Building main.exe...
-g++ main.cpp -o main.exe -static -lpsapi
+g++ main.cpp -o main.exe -static -lpsapi -lversion
 if errorlevel 1 (
     echo BUILD FAILED: main.exe
     exit /b 1
 )
 
 echo Building overlay.exe...
-g++ overlay.cpp -o overlay.exe -mwindows -static -lmsimg32
+g++ overlay.cpp -o overlay.exe -mwindows -static -lmsimg32 -lversion
 if errorlevel 1 (
     echo BUILD FAILED: overlay.exe
     exit /b 1

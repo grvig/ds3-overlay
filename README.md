@@ -13,7 +13,7 @@ Currently tracks:
 ## Requirements
 
 - Windows
-- Dark Souls III (tested against version 1.15.0.0)
+- Dark Souls III (versions 1.01.1 - 1.15.2; tested against 1.15.0)
 - MinGW-w64 (`g++`) to build
 
 ## Building
@@ -57,10 +57,12 @@ the game.
 
 ## Notes
 
-Memory offsets are tied to specific game versions. The souls counter currently
-assumes version 1.15.0.0 and would need its offset updated if the game ever
-patches. Boss tracking is unaffected by version changes, since it finds what it
-needs by pattern scanning rather than fixed offsets.
+Memory offsets are tied to specific game versions. The overlay reads the
+version straight off the game executable and picks the matching offsets from a
+table covering 1.01.1 through 1.15.2. On a version that isn't in the table, the
+souls counter shows `--` and everything else keeps working - boss tracking
+doesn't depend on version-specific offsets, since it finds what it needs by
+pattern scanning.
 
 Offsets and byte patterns are sourced from public Dark Souls III reverse
 engineering work - the

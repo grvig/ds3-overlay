@@ -13,6 +13,7 @@ Ds3Connection g_conn;
 bool g_connected = false;
 bool g_bossDefeated[BOSS_COUNT] = {};
 uint32_t g_souls = 0;
+bool g_soulsAvailable = false;
 
 // How long to wait after first spotting the game process before we actually
 // attach to it and inject code. Attaching the instant the process appears
@@ -96,7 +97,9 @@ void RenderOverlay(HWND hwnd) {
             }
         }
 
-        std::wstring soulsLine = L"Souls: " + std::to_wstring(g_souls);
+        std::wstring soulsLine = g_soulsAvailable
+            ? L"Souls: " + std::to_wstring(g_souls)
+            : L"Souls: --";
         SetTextColor(memDC, RGB(255, 255, 255));
         RECT soulsRect = { 20, 20, 380, 20 + LINE_HEIGHT };
         DrawText(memDC, soulsLine.c_str(), -1, &soulsRect, DT_LEFT | DT_TOP);
@@ -192,7 +195,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 for (int i = 0; i < BOSS_COUNT; i++) {
                     g_bossDefeated[i] = flags[i];
                 }
-                g_souls = ReadSouls(g_conn);
+                g_soulsAvailable = ReadSouls(g_conn, g_souls);
             }
             RenderOverlay(hwnd);
             return 0;
