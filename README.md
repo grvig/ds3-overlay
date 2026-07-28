@@ -39,6 +39,7 @@ on its own once the game appears. If you quit the game, it goes back to waiting.
 
 | Key | Does |
 | --- | --- |
+| `F9` | Move the overlay to the next screen corner |
 | `F10` | Show / hide the overlay |
 | `F11` | Close the overlay |
 
@@ -55,9 +56,10 @@ x=10
 y=10
 ```
 
-`x` and `y` are the top-left corner in screen pixels. Delete the file to go back
-to the defaults - a missing or malformed file is ignored rather than treated as
-an error.
+`x` and `y` are the top-left corner in screen pixels. Moving the overlay with
+`F9` rewrites this file, so wherever you leave it is where it comes back. Delete
+the file to go back to the defaults - a missing or malformed file is ignored
+rather than treated as an error.
 
 ## How it works
 

@@ -28,6 +28,7 @@ const DWORD STARTUP_GRACE_MS = 8000;
 const UINT_PTR TIMER_ID = 1;
 const int HOTKEY_TOGGLE_ID = 1;
 const int HOTKEY_QUIT_ID = 2;
+const int HOTKEY_MOVE_ID = 3;
 bool g_visible = true;
 OverlaySettings g_settings;
 const int LINE_HEIGHT = 20;
@@ -223,24 +224,80 @@ void RenderOverlay(HWND hwnd) {
     ReleaseDC(nullptr, screenDC);
 }
 
+// Moves the overlay to the next screen corner, wrapping back around to the
+// first. Corners are inset by the same margin the default position uses, so
+// the overlay never sits flush against a screen edge.
+void MoveToNextCorner(HWND hwnd) {
+    const int MARGIN = 10;
+    int screenW = GetSystemMetrics(SM_CXSCREEN);
+    int screenH = GetSystemMetrics(SM_CYSCREEN);
+
+    int left = MARGIN;
+    int right = screenW - g_windowWidth - MARGIN;
+    int top = MARGIN;
+    int bottom = screenH - WINDOW_HEIGHT - MARGIN;
+
+    // If the overlay is taller than the screen, keep it pinned to the top
+    // rather than pushing its start position off-screen.
+    if (bottom < top) {
+        bottom = top;
+    }
+    if (right < left) {
+        right = left;
+    }
+
+    const POINT corners[] = {
+        { left,  top },
+        { right, top },
+        { right, bottom },
+        { left,  bottom },
+    };
+    const int cornerCount = sizeof(corners) / sizeof(corners[0]);
+
+    // Find which corner we're currently closest to, then step to the next.
+    int nearest = 0;
+    long long bestDistance = -1;
+    for (int i = 0; i < cornerCount; i++) {
+        long long dx = corners[i].x - g_settings.x;
+        long long dy = corners[i].y - g_settings.y;
+        long long distance = dx * dx + dy * dy;
+        if (bestDistance < 0 || distance < bestDistance) {
+            bestDistance = distance;
+            nearest = i;
+        }
+    }
+
+    POINT next = corners[(nearest + 1) % cornerCount];
+    g_settings.x = next.x;
+    g_settings.y = next.y;
+
+    SetWindowPos(hwnd, HWND_TOPMOST, g_settings.x, g_settings.y, 0, 0,
+                 SWP_NOSIZE | SWP_NOACTIVATE);
+    SaveSettings(g_settings);
+}
+
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_DESTROY:
             KillTimer(hwnd, TIMER_ID);
             UnregisterHotKey(hwnd, HOTKEY_TOGGLE_ID);
             UnregisterHotKey(hwnd, HOTKEY_QUIT_ID);
+            UnregisterHotKey(hwnd, HOTKEY_MOVE_ID);
             PostQuitMessage(0);
             return 0;
 
-        // F10 shows/hides the overlay, F11 closes it. These are registered as
-        // global hotkeys, so they work even while the game has focus - which
-        // matters because the overlay itself can't be clicked.
+        // F9 moves the overlay to the next corner, F10 shows/hides it, F11
+        // closes it. These are registered as global hotkeys, so they work
+        // even while the game has focus - which matters because the overlay
+        // itself can't be clicked.
         case WM_HOTKEY: {
             if (wParam == HOTKEY_TOGGLE_ID) {
                 g_visible = !g_visible;
                 ShowWindow(hwnd, g_visible ? SW_SHOWNOACTIVATE : SW_HIDE);
             } else if (wParam == HOTKEY_QUIT_ID) {
                 DestroyWindow(hwnd);
+            } else if (wParam == HOTKEY_MOVE_ID) {
+                MoveToNextCorner(hwnd);
             }
             return 0;
         }
@@ -323,6 +380,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     // Global hotkeys, so they work while the game has focus. If another
     // program has already claimed F10/F11, registration fails - not fatal,
     // the overlay just runs without them.
+    RegisterHotKey(hwnd, HOTKEY_MOVE_ID, 0, VK_F9);
     RegisterHotKey(hwnd, HOTKEY_TOGGLE_ID, 0, VK_F10);
     RegisterHotKey(hwnd, HOTKEY_QUIT_ID, 0, VK_F11);
 
