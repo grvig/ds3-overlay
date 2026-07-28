@@ -9,6 +9,7 @@
 #include <cstring>
 #include <algorithm>
 #include "ds3reader.h"
+#include "settings.h"
 
 Ds3Connection g_conn;
 bool g_connected = false;
@@ -28,6 +29,7 @@ const UINT_PTR TIMER_ID = 1;
 const int HOTKEY_TOGGLE_ID = 1;
 const int HOTKEY_QUIT_ID = 2;
 bool g_visible = true;
+OverlaySettings g_settings;
 const int LINE_HEIGHT = 20;
 const int SUMMARY_HEIGHT = LINE_HEIGHT + 10;
 const int FONT_HEIGHT = 15;
@@ -291,8 +293,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     const wchar_t CLASS_NAME[] = L"DS3OverlayWindowClass";
 
-    // Work out how wide the window needs to be before creating it.
+    // Work out how wide the window needs to be before creating it, and where
+    // the user wants it.
     g_windowWidth = MeasureRequiredWidth();
+    g_settings = LoadSettings();
 
     WNDCLASS wc = {};
     wc.lpfnWndProc = WindowProc;
@@ -308,7 +312,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
         CLASS_NAME,
         L"DS3 Overlay",
         WS_POPUP,
-        10, 10, g_windowWidth, WINDOW_HEIGHT,
+        g_settings.x, g_settings.y, g_windowWidth, WINDOW_HEIGHT,
         nullptr, nullptr, hInstance, nullptr
     );
 

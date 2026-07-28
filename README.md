@@ -45,6 +45,20 @@ on its own once the game appears. If you quit the game, it goes back to waiting.
 These work while the game has focus - handy, since the overlay is click-through
 and can't be interacted with directly.
 
+## Settings
+
+Where the overlay sits on screen is read from `overlay-settings.txt`, kept next
+to `overlay.exe`:
+
+```
+x=10
+y=10
+```
+
+`x` and `y` are the top-left corner in screen pixels. Delete the file to go back
+to the defaults - a missing or malformed file is ignored rather than treated as
+an error.
+
 ## How it works
 
 Everything is read-only - the overlay never writes to your save file or modifies
