@@ -255,7 +255,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     RegisterHotKey(hwnd, HOTKEY_TOGGLE_ID, 0, VK_F10);
     RegisterHotKey(hwnd, HOTKEY_QUIT_ID, 0, VK_F11);
 
-    g_connected = ConnectToDs3(g_conn);
+    // Deliberately no ConnectToDs3 here - the timer handles connecting, and
+    // it waits out the startup grace period first. Attaching straight away
+    // could catch the game mid-launch, which is what used to make it close
+    // itself. Paint once now so the window shows its waiting message right
+    // away rather than sitting blank until the first tick.
     RenderOverlay(hwnd);
     SetTimer(hwnd, TIMER_ID, 1000, nullptr);
 
