@@ -7,6 +7,7 @@
 #include <windows.h>
 #include <string>
 #include <cstring>
+#include <algorithm>
 #include "ds3reader.h"
 
 Ds3Connection g_conn;
@@ -28,8 +29,24 @@ const int HOTKEY_TOGGLE_ID = 1;
 const int HOTKEY_QUIT_ID = 2;
 bool g_visible = true;
 const int LINE_HEIGHT = 20;
-const int WINDOW_WIDTH = 400;
 const int SUMMARY_HEIGHT = LINE_HEIGHT + 10;
+const int FONT_HEIGHT = 15;
+
+// Layout margins. Boss names sit slightly further in than section headers
+// so the grouping reads clearly.
+const int PAD_LEFT = 20;
+const int PAD_RIGHT = 20;
+const int PAD_TOP = 20;
+const int PAD_BOTTOM = 20;
+const int BOSS_INDENT = 30;
+
+HFONT CreateOverlayFont() {
+    return CreateFont(
+        FONT_HEIGHT, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+        ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Segoe UI"
+    );
+}
 
 // The boss list is grouped into sections (Base Game, Ashes of Ariandel, The
 // Ringed City) with a header line above each group. Count how many section
@@ -46,7 +63,56 @@ int CountSections() {
     return count;
 }
 const int SECTION_COUNT = CountSections();
-const int WINDOW_HEIGHT = 40 + LINE_HEIGHT + SUMMARY_HEIGHT + BOSS_COUNT * LINE_HEIGHT + SECTION_COUNT * LINE_HEIGHT;
+const int WINDOW_HEIGHT = PAD_TOP + PAD_BOTTOM + LINE_HEIGHT + SUMMARY_HEIGHT
+                        + BOSS_COUNT * LINE_HEIGHT + SECTION_COUNT * LINE_HEIGHT;
+
+// Width is measured rather than guessed: whatever the longest line actually
+// renders as decides how wide the window needs to be. A fixed guess either
+// clipped long boss names or left a band of dead space, and it broke
+// whenever the font or the boss list changed.
+int g_windowWidth = 0;
+
+int MeasureLineWidth(HDC dc, const wchar_t* text, int indent) {
+    SIZE size = {};
+    GetTextExtentPoint32(dc, text, (int)wcslen(text), &size);
+    return indent + size.cx;
+}
+
+int MeasureRequiredWidth() {
+    HDC screenDC = GetDC(nullptr);
+    HDC measureDC = CreateCompatibleDC(screenDC);
+    HFONT font = CreateOverlayFont();
+    HFONT oldFont = (HFONT)SelectObject(measureDC, font);
+
+    int widest = 0;
+    const wchar_t* lastSection = nullptr;
+    for (int i = 0; i < BOSS_COUNT; i++) {
+        if (lastSection == nullptr || wcscmp(lastSection, BOSS_LIST[i].section) != 0) {
+            lastSection = BOSS_LIST[i].section;
+            widest = std::max(widest, MeasureLineWidth(measureDC, lastSection, PAD_LEFT));
+        }
+        widest = std::max(widest, MeasureLineWidth(measureDC, BOSS_LIST[i].name, BOSS_INDENT));
+    }
+
+    // The status lines can be wider than any boss name, so measure them too.
+    // Use worst-case stand-ins rather than the live values, so the window
+    // doesn't need resizing as the numbers change.
+    widest = std::max(widest, MeasureLineWidth(measureDC, L"Waiting for Dark Souls III...", PAD_LEFT));
+    widest = std::max(widest, MeasureLineWidth(measureDC, L"Found game, connecting in 00s...", PAD_LEFT));
+    widest = std::max(widest, MeasureLineWidth(measureDC, L"Bosses Defeated: 00 / 00", PAD_LEFT));
+    widest = std::max(widest, MeasureLineWidth(measureDC, L"Souls: 9999999999", PAD_LEFT));
+
+    SelectObject(measureDC, oldFont);
+    DeleteObject(font);
+    DeleteDC(measureDC);
+    ReleaseDC(nullptr, screenDC);
+
+    // A few pixels of slack: measuring and drawing can disagree slightly,
+    // and landing exactly flush risks shaving the last pixel off the
+    // longest line.
+    const int SLACK = 4;
+    return widest + SLACK + PAD_RIGHT;
+}
 
 // Renders the current frame into a true per-pixel-transparent bitmap and
 // hands it to Windows as the window's whole appearance. Unlike the old
@@ -58,7 +124,7 @@ void RenderOverlay(HWND hwnd) {
 
     BITMAPINFO bmi = {};
     bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    bmi.bmiHeader.biWidth = WINDOW_WIDTH;
+    bmi.bmiHeader.biWidth = g_windowWidth;
     bmi.bmiHeader.biHeight = -WINDOW_HEIGHT; // negative = top-down, easier to reason about
     bmi.bmiHeader.biPlanes = 1;
     bmi.bmiHeader.biBitCount = 32;
@@ -70,19 +136,17 @@ void RenderOverlay(HWND hwnd) {
     HBITMAP oldBitmap = (HBITMAP)SelectObject(memDC, bitmap);
 
     // Start fully transparent (all zero bytes = black, 0 alpha) everywhere.
-    memset(pixels, 0, WINDOW_WIDTH * WINDOW_HEIGHT * 4);
+    memset(pixels, 0, g_windowWidth * WINDOW_HEIGHT * 4);
 
     SetBkMode(memDC, TRANSPARENT);
-    HFONT font = CreateFont(
-        15, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
-        ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-        ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Segoe UI"
-    );
+    HFONT font = CreateOverlayFont();
     HFONT oldFont = (HFONT)SelectObject(memDC, font);
+
+    const int textRight = g_windowWidth - PAD_RIGHT;
 
     if (!g_connected) {
         SetTextColor(memDC, RGB(255, 255, 0));
-        RECT textRect = { 20, 20, 380, 60 };
+        RECT textRect = { PAD_LEFT, PAD_TOP, textRight, PAD_TOP + 2 * LINE_HEIGHT };
 
         std::wstring waitingText = L"Waiting for Dark Souls III...";
         if (g_firstSeenTick != 0) {
@@ -104,27 +168,27 @@ void RenderOverlay(HWND hwnd) {
             ? L"Souls: " + std::to_wstring(g_souls)
             : L"Souls: --";
         SetTextColor(memDC, RGB(255, 255, 255));
-        RECT soulsRect = { 20, 20, 380, 20 + LINE_HEIGHT };
+        RECT soulsRect = { PAD_LEFT, PAD_TOP, textRight, PAD_TOP + LINE_HEIGHT };
         DrawText(memDC, soulsLine.c_str(), -1, &soulsRect, DT_LEFT | DT_TOP);
 
         std::wstring summary = L"Bosses Defeated: " + std::to_wstring(defeatedCount) + L" / " + std::to_wstring(BOSS_COUNT);
         SetTextColor(memDC, RGB(255, 255, 0));
-        RECT summaryRect = { 20, 20 + LINE_HEIGHT, 380, 20 + LINE_HEIGHT + SUMMARY_HEIGHT };
+        RECT summaryRect = { PAD_LEFT, PAD_TOP + LINE_HEIGHT, textRight, PAD_TOP + LINE_HEIGHT + SUMMARY_HEIGHT };
         DrawText(memDC, summary.c_str(), -1, &summaryRect, DT_LEFT | DT_TOP);
 
-        int y = 20 + LINE_HEIGHT + SUMMARY_HEIGHT;
+        int y = PAD_TOP + LINE_HEIGHT + SUMMARY_HEIGHT;
         const wchar_t* lastSection = nullptr;
         for (int i = 0; i < BOSS_COUNT; i++) {
             if (lastSection == nullptr || wcscmp(lastSection, BOSS_LIST[i].section) != 0) {
                 lastSection = BOSS_LIST[i].section;
                 SetTextColor(memDC, RGB(150, 150, 255));
-                RECT headerRect = { 20, y, 380, y + LINE_HEIGHT };
+                RECT headerRect = { PAD_LEFT, y, textRight, y + LINE_HEIGHT };
                 DrawText(memDC, lastSection, -1, &headerRect, DT_LEFT | DT_TOP);
                 y += LINE_HEIGHT;
             }
 
             SetTextColor(memDC, g_bossDefeated[i] ? RGB(0, 255, 0) : RGB(255, 255, 255));
-            RECT lineRect = { 30, y, 380, y + LINE_HEIGHT };
+            RECT lineRect = { BOSS_INDENT, y, textRight, y + LINE_HEIGHT };
             DrawText(memDC, BOSS_LIST[i].name, -1, &lineRect, DT_LEFT | DT_TOP);
             y += LINE_HEIGHT;
         }
@@ -136,7 +200,7 @@ void RenderOverlay(HWND hwnd) {
     // exactly the format Windows wants for blending: color pre-multiplied
     // by transparency).
     BYTE* bytes = (BYTE*)pixels;
-    for (int i = 0; i < WINDOW_WIDTH * WINDOW_HEIGHT; i++) {
+    for (int i = 0; i < g_windowWidth * WINDOW_HEIGHT; i++) {
         BYTE b = bytes[i * 4 + 0];
         BYTE g = bytes[i * 4 + 1];
         BYTE r = bytes[i * 4 + 2];
@@ -145,7 +209,7 @@ void RenderOverlay(HWND hwnd) {
     }
 
     POINT srcPos = { 0, 0 };
-    SIZE size = { WINDOW_WIDTH, WINDOW_HEIGHT };
+    SIZE size = { g_windowWidth, WINDOW_HEIGHT };
     BLENDFUNCTION blend = { AC_SRC_OVER, 0, 255, AC_SRC_ALPHA };
     UpdateLayeredWindow(hwnd, screenDC, nullptr, &size, memDC, &srcPos, 0, &blend, ULW_ALPHA);
 
@@ -227,6 +291,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     const wchar_t CLASS_NAME[] = L"DS3OverlayWindowClass";
 
+    // Work out how wide the window needs to be before creating it.
+    g_windowWidth = MeasureRequiredWidth();
+
     WNDCLASS wc = {};
     wc.lpfnWndProc = WindowProc;
     wc.hInstance = hInstance;
@@ -241,7 +308,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
         CLASS_NAME,
         L"DS3 Overlay",
         WS_POPUP,
-        10, 10, WINDOW_WIDTH, WINDOW_HEIGHT,
+        10, 10, g_windowWidth, WINDOW_HEIGHT,
         nullptr, nullptr, hInstance, nullptr
     );
 
