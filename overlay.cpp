@@ -63,6 +63,21 @@ const int BOSS_INDENT = 30;
 // bottom by however far down the window starts.
 const int SCREEN_MARGIN = 10;
 
+// The size of the monitor the overlay is currently on. GetSystemMetrics only
+// ever describes the primary monitor, so on a second screen it would report
+// the wrong size and the overlay would be laid out for the wrong display.
+RECT GetCurrentMonitorRect(HWND hwnd) {
+    HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO info = {};
+    info.cbSize = sizeof(info);
+    if (monitor != nullptr && GetMonitorInfo(monitor, &info)) {
+        return info.rcWork; // work area, so the taskbar isn't covered
+    }
+
+    RECT fallback = { 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN) };
+    return fallback;
+}
+
 HFONT CreateOverlayFont() {
     return CreateFont(
         g_fontHeight, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
@@ -274,8 +289,9 @@ void RenderOverlay(HWND hwnd) {
 
     // Decide the shape of this frame before drawing it. The window is
     // resized to match, so it always ends up exactly big enough.
-    int heightBudget = GetSystemMetrics(SM_CYSCREEN) - 2 * SCREEN_MARGIN;
-    int widthBudget = GetSystemMetrics(SM_CXSCREEN) - 2 * SCREEN_MARGIN;
+    RECT monitor = GetCurrentMonitorRect(hwnd);
+    int heightBudget = (monitor.bottom - monitor.top) - 2 * SCREEN_MARGIN;
+    int widthBudget = (monitor.right - monitor.left) - 2 * SCREEN_MARGIN;
     int maxColumns = (g_columnWidth > 0) ? (widthBudget / g_columnWidth) : 1;
 
     ColumnLayout layout = PlanColumns((int)lines.size(), g_lineHeight,
@@ -366,13 +382,14 @@ void RenderOverlay(HWND hwnd) {
 // the overlay never sits flush against a screen edge.
 void MoveToNextCorner(HWND hwnd) {
     const int MARGIN = SCREEN_MARGIN;
-    int screenW = GetSystemMetrics(SM_CXSCREEN);
-    int screenH = GetSystemMetrics(SM_CYSCREEN);
+    // Corners of whichever monitor the overlay is on, not always the primary
+    // one, so this still works on a second screen.
+    RECT monitor = GetCurrentMonitorRect(hwnd);
 
-    int left = MARGIN;
-    int right = screenW - g_windowWidth - MARGIN;
-    int top = MARGIN;
-    int bottom = screenH - g_windowHeight - MARGIN;
+    int left = monitor.left + MARGIN;
+    int right = monitor.right - g_windowWidth - MARGIN;
+    int top = monitor.top + MARGIN;
+    int bottom = monitor.bottom - g_windowHeight - MARGIN;
 
     // If the overlay is taller than the screen, keep it pinned to the top
     // rather than pushing its start position off-screen.
