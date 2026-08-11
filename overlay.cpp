@@ -143,6 +143,7 @@ int MeasureRequiredWidth() {
     widest = std::max(widest, MeasureLineWidth(measureDC, L"Found game, connecting in 00s...", PAD_LEFT));
     widest = std::max(widest, MeasureLineWidth(measureDC, L"Bosses Defeated: 00 / 00", PAD_LEFT));
     widest = std::max(widest, MeasureLineWidth(measureDC, L"Bonfires Lit: 00 / 00", PAD_LEFT));
+    widest = std::max(widest, MeasureLineWidth(measureDC, L"Completion: 100%  (000/000)", PAD_LEFT));
     widest = std::max(widest, MeasureLineWidth(measureDC, L"Souls: 9999999999", PAD_LEFT));
 
     SelectObject(measureDC, oldFont);
@@ -233,6 +234,27 @@ std::vector<OverlayLine> BuildOverlayLines() {
         if (g_bonfireLit[i]) {
             litCount++;
         }
+    }
+
+    // Overall completion across everything being tracked - the headline
+    // number for a completionist run. Only counts sections that are actually
+    // shown, so hiding one doesn't leave a percentage that can never reach
+    // 100%.
+    int totalTracked = 0;
+    int totalDone = 0;
+    if (g_settings.showBosses) {
+        totalTracked += BOSS_COUNT;
+        totalDone += defeatedCount;
+    }
+    if (g_settings.showBonfires) {
+        totalTracked += BONFIRE_COUNT;
+        totalDone += litCount;
+    }
+    if (totalTracked > 0) {
+        int percent = (totalDone * 100) / totalTracked;
+        lines.push_back({ L"Completion: " + std::to_wstring(percent) + L"%  ("
+                          + std::to_wstring(totalDone) + L"/" + std::to_wstring(totalTracked) + L")",
+                          (totalDone == totalTracked) ? COLOR_DONE : COLOR_SUMMARY, PAD_LEFT });
     }
 
     if (g_settings.showSouls) {

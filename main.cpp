@@ -58,9 +58,14 @@ int main() {
         [](const BonfireInfo& b) { return b.name; },
         [](const BonfireInfo& b) { return b.area; });
 
+    int totalTracked = BOSS_COUNT + BONFIRE_COUNT;
+    int totalDone = bossesDefeated + bonfiresLit;
+
     std::cout << "\n=== TOTALS ===" << std::endl;
     std::cout << "Bosses defeated: " << bossesDefeated << " / " << BOSS_COUNT << std::endl;
     std::cout << "Bonfires lit:    " << bonfiresLit << " / " << BONFIRE_COUNT << std::endl;
+    std::cout << "Completion:      " << (totalDone * 100 / totalTracked) << "%  ("
+              << totalDone << "/" << totalTracked << ")" << std::endl;
 
     VirtualFreeEx(conn.process, conn.remoteBuffer, 0, MEM_RELEASE);
     CloseHandle(conn.process);
