@@ -203,25 +203,40 @@ uint8_t CallGetEventFlag(HANDLE process, BYTE* remoteBuffer, BYTE* functionAddr,
     return result;
 }
 
-// Same idea as CallGetEventFlag, but checks every flag in one go: one write,
-// one thread, one wait - instead of doing that whole round trip separately
-// for each boss. Much lighter touch on the game when checking a long list.
-std::vector<uint8_t> CallGetEventFlagsBatch(HANDLE process, BYTE* remoteBuffer, BYTE* functionAddr, uintptr_t eventFlagMan, const std::vector<uint32_t>& flagIds) {
-    BYTE* codeAddr = remoteBuffer;
-    // Each flag check compiles to about 48 bytes of code, so checking many
-    // flags at once produces a lot more code than the single-flag version
-    // did. The results area has to start well past all of that code, or the
-    // still-running code would start overwriting itself with result bytes
-    // mid-execution - which is exactly what was crashing the game.
-    BYTE* resultsAddr = remoteBuffer + 0x800;
+// Every flag check adds exactly this many bytes of machine code. The loop in
+// BuildBatchCode below must keep matching this number - BatchCodeSize is
+// asserted against the real generated length before anything runs.
+const size_t BYTES_PER_FLAG_CHECK = 48;
 
+// Gap left between the end of the code and the start of the results. The two
+// must never overlap: the code is still executing while it writes results,
+// so a result landing on a not-yet-executed instruction corrupts the game's
+// thread mid-run. That exact overlap is what used to crash the game.
+const size_t BATCH_GAP = 64;
+
+size_t BatchCodeSize(size_t flagCount) {
+    return flagCount * BYTES_PER_FLAG_CHECK + 1; // +1 for the trailing ret
+}
+
+// Largest number of flags whose code, gap and results all fit in one buffer.
+size_t FlagsPerBatch(size_t bufferSize) {
+    size_t overhead = BATCH_GAP + 1;
+    if (bufferSize <= overhead) {
+        return 0;
+    }
+    // Each flag costs its code plus one result byte.
+    return (bufferSize - overhead) / (BYTES_PER_FLAG_CHECK + 1);
+}
+
+std::vector<BYTE> BuildBatchCode(uintptr_t eventFlagMan, BYTE* functionAddr, const std::vector<uint32_t>& flagIds, size_t offset, size_t count, BYTE* resultsAddr) {
     std::vector<BYTE> code;
-    for (size_t i = 0; i < flagIds.size(); i++) {
+    for (size_t n = 0; n < count; n++) {
+        uint32_t flagId = flagIds[offset + n];
         code.push_back(0x48); code.push_back(0xB9);           // mov rcx, <eventFlagMan>
         AppendBytes(code, eventFlagMan);
 
-        code.push_back(0xBA);                                 // mov edx, <flagIds[i]>
-        AppendBytes(code, flagIds[i]);
+        code.push_back(0xBA);                                 // mov edx, <flagId>
+        AppendBytes(code, flagId);
 
         code.push_back(0x48); code.push_back(0x83); code.push_back(0xEC); code.push_back(0x28); // sub rsp, 0x28
 
@@ -230,27 +245,67 @@ std::vector<uint8_t> CallGetEventFlagsBatch(HANDLE process, BYTE* remoteBuffer, 
 
         code.push_back(0xFF); code.push_back(0xD0);           // call rax
 
-        code.push_back(0x49); code.push_back(0xB8);           // mov r8, <resultsAddr + i>
-        AppendBytes(code, (uintptr_t)(resultsAddr + i));
+        code.push_back(0x49); code.push_back(0xB8);           // mov r8, <resultsAddr + n>
+        AppendBytes(code, (uintptr_t)(resultsAddr + n));
 
         code.push_back(0x41); code.push_back(0x88); code.push_back(0x00); // mov [r8], al
 
         code.push_back(0x48); code.push_back(0x83); code.push_back(0xC4); code.push_back(0x28); // add rsp, 0x28
     }
     code.push_back(0xC3); // ret, once, at the very end
+    return code;
+}
 
-    WriteProcessMemory(process, codeAddr, code.data(), code.size(), nullptr);
-
+// Same idea as CallGetEventFlag, but checks many flags per trip instead of
+// one: one write, one thread, one wait. If the list is too long to fit in the
+// buffer it's split into as many passes as needed, so callers can ask for any
+// number of flags without having to know the buffer size.
+std::vector<uint8_t> CallGetEventFlagsBatch(HANDLE process, BYTE* remoteBuffer, size_t remoteBufferSize, BYTE* functionAddr, uintptr_t eventFlagMan, const std::vector<uint32_t>& flagIds) {
     std::vector<uint8_t> results(flagIds.size(), 0);
-    HANDLE thread = CreateRemoteThread(process, nullptr, 0, (LPTHREAD_START_ROUTINE)codeAddr, nullptr, 0, nullptr);
-    if (thread == nullptr) {
-        return results;
-    }
-    WaitForSingleObject(thread, INFINITE);
-    CloseHandle(thread);
 
-    SIZE_T bytesRead = 0;
-    ReadProcessMemory(process, resultsAddr, results.data(), results.size(), &bytesRead);
+    size_t perBatch = FlagsPerBatch(remoteBufferSize);
+    if (perBatch == 0) {
+        return results; // buffer too small to do anything safely
+    }
+
+    for (size_t done = 0; done < flagIds.size(); ) {
+        size_t count = flagIds.size() - done;
+        if (count > perBatch) {
+            count = perBatch;
+        }
+
+        // Park the results past the code, with a gap, so the running code
+        // can never write over instructions it hasn't reached yet.
+        size_t resultsOffset = BatchCodeSize(count) + BATCH_GAP;
+        BYTE* resultsAddr = remoteBuffer + resultsOffset;
+
+        std::vector<BYTE> code = BuildBatchCode(eventFlagMan, functionAddr, flagIds, done, count, resultsAddr);
+
+        // Refuse to run anything that doesn't provably fit. Getting this
+        // wrong corrupts the game's own thread, so bail rather than guess.
+        bool codeFits = code.size() <= resultsOffset;
+        bool resultsFit = resultsOffset + count <= remoteBufferSize;
+        if (!codeFits || !resultsFit) {
+            return results;
+        }
+
+        if (!WriteProcessMemory(process, remoteBuffer, code.data(), code.size(), nullptr)) {
+            return results;
+        }
+
+        HANDLE thread = CreateRemoteThread(process, nullptr, 0, (LPTHREAD_START_ROUTINE)remoteBuffer, nullptr, 0, nullptr);
+        if (thread == nullptr) {
+            return results;
+        }
+        WaitForSingleObject(thread, INFINITE);
+        CloseHandle(thread);
+
+        SIZE_T bytesRead = 0;
+        ReadProcessMemory(process, resultsAddr, results.data() + done, count, &bytesRead);
+
+        done += count;
+    }
+
     return results;
 }
 
@@ -300,6 +355,7 @@ struct Ds3Connection {
     uintptr_t eventFlagMan = 0;
     BYTE* getEventFlagAddr = nullptr;
     LPVOID remoteBuffer = nullptr;
+    size_t remoteBufferSize = 0;
     BYTE* moduleBase = nullptr;
 
     // Version of the running game, and the matching offset from the table
@@ -403,8 +459,12 @@ bool ConnectToDs3(Ds3Connection& conn) {
         return false;
     }
 
-    conn.remoteBuffer = VirtualAllocEx(conn.process, nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    // One page is plenty: anything longer than fits here is split into
+    // several passes rather than overflowing.
+    conn.remoteBufferSize = 4096;
+    conn.remoteBuffer = VirtualAllocEx(conn.process, nullptr, conn.remoteBufferSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
     if (conn.remoteBuffer == nullptr) {
+        conn.remoteBufferSize = 0;
         return false;
     }
 
@@ -452,12 +512,17 @@ bool ReadSouls(const Ds3Connection& conn, uint32_t& outSouls) {
     return true;
 }
 
-// Reads every boss's defeated flag from BOSS_LIST in one batch, instead of
-// one game round-trip per boss.
+std::vector<uint8_t> ReadFlags(const Ds3Connection& conn, const std::vector<uint32_t>& flagIds) {
+    return CallGetEventFlagsBatch(conn.process, (BYTE*)conn.remoteBuffer, conn.remoteBufferSize,
+                                  conn.getEventFlagAddr, conn.eventFlagMan, flagIds);
+}
+
+// Reads every boss's defeated flag from BOSS_LIST, batched rather than one
+// game round-trip per boss.
 std::vector<uint8_t> ReadAllBossFlags(const Ds3Connection& conn) {
     std::vector<uint32_t> flagIds;
     for (int i = 0; i < BOSS_COUNT; i++) {
         flagIds.push_back(BOSS_LIST[i].defeatedFlag);
     }
-    return CallGetEventFlagsBatch(conn.process, (BYTE*)conn.remoteBuffer, conn.getEventFlagAddr, conn.eventFlagMan, flagIds);
+    return ReadFlags(conn, flagIds);
 }
