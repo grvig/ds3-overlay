@@ -29,6 +29,16 @@ That produces two programs:
 | `overlay.exe` | The actual overlay - a transparent, always-on-top, click-through window |
 | `main.exe` | A console tool that prints the same info once and exits, handy for testing |
 
+## Tests
+
+```
+test.bat
+```
+
+Checks the boss and bonfire lists are well-formed, and that the generated
+flag-reading code can never overwrite its own results area. Runs without the
+game open.
+
 ## Running
 
 Start Dark Souls III first, get into a save, then run `overlay.exe`. The overlay
