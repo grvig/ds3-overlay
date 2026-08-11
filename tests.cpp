@@ -147,30 +147,45 @@ static void TestColumnLayout() {
     const int BUDGET = SCREEN - 2 * SCREEN_MARGIN;
 
     // Short lists stay in a single column.
-    ColumnLayout one = PlanColumns(10, LINE_HEIGHT, PADDING, BUDGET);
+    ColumnLayout one = PlanColumns(10, LINE_HEIGHT, PADDING, BUDGET, 8);
     Check(one.columns == 1, "a 10-line list should need one column");
 
     // Nothing may ever be laid out so tall that it runs off the bottom once
     // placed - the overlay is click-through, so anything off-screen is
     // unreachable and there is nothing to scroll.
+    const int MAX_COLUMNS = 8; // plenty at the default font size
     for (int lineCount = 1; lineCount <= 400; lineCount++) {
-        ColumnLayout layout = PlanColumns(lineCount, LINE_HEIGHT, PADDING, BUDGET);
+        ColumnLayout layout = PlanColumns(lineCount, LINE_HEIGHT, PADDING, BUDGET, MAX_COLUMNS);
         int height = PADDING + layout.linesPerColumn * LINE_HEIGHT;
         Check(SCREEN_MARGIN + height <= SCREEN,
               "runs off the bottom at " + std::to_string(lineCount) + " lines");
         Check(layout.columns >= 1, "column count must be at least 1");
+        Check(layout.columns <= MAX_COLUMNS, "column count must respect the cap");
         Check(layout.linesPerColumn >= 1, "lines per column must be at least 1");
-        // Every line must land somewhere.
-        Check(layout.columns * layout.linesPerColumn >= lineCount,
-              "layout drops lines at " + std::to_string(lineCount));
+        // Every line must either land somewhere or be counted as dropped.
+        Check(layout.columns * layout.linesPerColumn + layout.droppedLines >= lineCount,
+              "layout loses lines at " + std::to_string(lineCount));
     }
-    std::cout << "  1..400 lines: always fits on screen, never drops a line" << std::endl;
+    std::cout << "  1..400 lines: always fits on screen, never loses a line" << std::endl;
+
+    // A hard column cap must report the shortfall rather than overflow.
+    {
+        ColumnLayout tight = PlanColumns(500, LINE_HEIGHT, PADDING, BUDGET, 2);
+        Check(tight.columns == 2, "must respect a cap of 2 columns");
+        Check(tight.droppedLines > 0, "must report lines that did not fit");
+        Check(tight.columns * tight.linesPerColumn + tight.droppedLines == 500,
+              "dropped count must account for exactly the leftover lines");
+        std::cout << "  500 lines capped at 2 columns: "
+                  << tight.columns * tight.linesPerColumn << " shown, "
+                  << tight.droppedLines << " reported as not fitting" << std::endl;
+    }
 
     // The real combined list must fit, placed at its real position.
     int bossLines = 2 + BOSS_COUNT + 3;          // souls + summary + bosses + section headers
     int bonfireLines = 1 + BONFIRE_COUNT + 14;   // summary + bonfires + area headers
     int total = bossLines + bonfireLines;
-    ColumnLayout real = PlanColumns(total, LINE_HEIGHT, PADDING, BUDGET);
+    ColumnLayout real = PlanColumns(total, LINE_HEIGHT, PADDING, BUDGET, MAX_COLUMNS);
+    Check(real.droppedLines == 0, "the real list should fit without dropping anything");
     int realHeight = PADDING + real.linesPerColumn * LINE_HEIGHT;
     Check(SCREEN_MARGIN + realHeight <= SCREEN, "the real combined list runs off the screen");
     std::cout << "  bosses + bonfires = " << total << " lines -> "

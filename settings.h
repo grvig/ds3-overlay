@@ -15,6 +15,16 @@
 struct OverlaySettings {
     int x = 10;
     int y = 10;
+
+    // Height of the text in pixels. Everything else (line spacing, column
+    // width, the window itself) is measured from this.
+    int fontSize = 15;
+
+    // Which sections to show. Turning one off shrinks the overlay to match,
+    // which is the main way to make it less intrusive on a small screen.
+    bool showSouls = true;
+    bool showBosses = true;
+    bool showBonfires = true;
 };
 
 // Settings live beside the executable rather than in the current working
@@ -67,6 +77,20 @@ void ApplyIntSetting(const std::string& value, int& target) {
     }
 }
 
+// Accepts the spellings people actually reach for, rather than insisting on
+// one. Anything unrecognised leaves the setting as it was.
+void ApplyBoolSetting(const std::string& value, bool& target) {
+    std::string lowered;
+    for (size_t i = 0; i < value.size(); i++) {
+        lowered += (char)tolower((unsigned char)value[i]);
+    }
+    if (lowered == "1" || lowered == "true" || lowered == "yes" || lowered == "on") {
+        target = true;
+    } else if (lowered == "0" || lowered == "false" || lowered == "no" || lowered == "off") {
+        target = false;
+    }
+}
+
 OverlaySettings LoadSettings() {
     OverlaySettings settings;
 
@@ -97,8 +121,21 @@ OverlaySettings LoadSettings() {
             ApplyIntSetting(value, settings.x);
         } else if (key == "y") {
             ApplyIntSetting(value, settings.y);
+        } else if (key == "fontSize") {
+            ApplyIntSetting(value, settings.fontSize);
+        } else if (key == "showSouls") {
+            ApplyBoolSetting(value, settings.showSouls);
+        } else if (key == "showBosses") {
+            ApplyBoolSetting(value, settings.showBosses);
+        } else if (key == "showBonfires") {
+            ApplyBoolSetting(value, settings.showBonfires);
         }
     }
+
+    // A silly font size would produce an unreadable or screen-filling
+    // overlay, so keep it within sane limits.
+    if (settings.fontSize < 8) settings.fontSize = 8;
+    if (settings.fontSize > 48) settings.fontSize = 48;
 
     return settings;
 }
@@ -110,8 +147,14 @@ bool SaveSettings(const OverlaySettings& settings) {
     }
 
     file << "# DS3 overlay settings. Delete this file to go back to defaults.\n";
-    file << "# x, y = where the top-left corner of the overlay sits on screen.\n";
+    file << "# x, y      = where the top-left corner of the overlay sits on screen.\n";
+    file << "# fontSize  = text height in pixels (8-48).\n";
+    file << "# show*     = true/false for each section.\n";
     file << "x=" << settings.x << "\n";
     file << "y=" << settings.y << "\n";
+    file << "fontSize=" << settings.fontSize << "\n";
+    file << "showSouls=" << (settings.showSouls ? "true" : "false") << "\n";
+    file << "showBosses=" << (settings.showBosses ? "true" : "false") << "\n";
+    file << "showBonfires=" << (settings.showBonfires ? "true" : "false") << "\n";
     return file.good();
 }

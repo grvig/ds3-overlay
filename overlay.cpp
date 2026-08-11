@@ -38,9 +38,16 @@ const int HOTKEY_QUIT_ID = 2;
 const int HOTKEY_MOVE_ID = 3;
 bool g_visible = true;
 OverlaySettings g_settings;
-const int LINE_HEIGHT = 20;
-const int SUMMARY_HEIGHT = LINE_HEIGHT + 10;
-const int FONT_HEIGHT = 15;
+// Text size comes from the settings file; line spacing and indents are
+// derived from it so the whole overlay scales together.
+int g_fontHeight = 15;
+int g_lineHeight = 20;
+
+void ApplyFontSize(int fontSize) {
+    g_fontHeight = fontSize;
+    // A third again on top of the text height keeps lines from touching.
+    g_lineHeight = fontSize + fontSize / 3;
+}
 
 // Layout margins. Boss names sit slightly further in than section headers
 // so the grouping reads clearly.
@@ -58,7 +65,7 @@ const int SCREEN_MARGIN = 10;
 
 HFONT CreateOverlayFont() {
     return CreateFont(
-        FONT_HEIGHT, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+        g_fontHeight, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
         ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
         ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Segoe UI"
     );
@@ -213,20 +220,32 @@ std::vector<OverlayLine> BuildOverlayLines() {
         }
     }
 
-    lines.push_back({ g_soulsAvailable ? L"Souls: " + std::to_wstring(g_souls) : L"Souls: --",
-                      COLOR_NOT_DONE, PAD_LEFT });
+    if (g_settings.showSouls) {
+        lines.push_back({ g_soulsAvailable ? L"Souls: " + std::to_wstring(g_souls) : L"Souls: --",
+                          COLOR_NOT_DONE, PAD_LEFT });
+    }
 
-    lines.push_back({ L"Bosses Defeated: " + std::to_wstring(defeatedCount) + L" / " + std::to_wstring(BOSS_COUNT),
-                      COLOR_SUMMARY, PAD_LEFT });
-    AppendGroupedLines(lines, BOSS_LIST, BOSS_COUNT, g_bossDefeated,
-                       [](const BossInfo& b) { return b.name; },
-                       [](const BossInfo& b) { return b.section; });
+    if (g_settings.showBosses) {
+        lines.push_back({ L"Bosses Defeated: " + std::to_wstring(defeatedCount) + L" / " + std::to_wstring(BOSS_COUNT),
+                          COLOR_SUMMARY, PAD_LEFT });
+        AppendGroupedLines(lines, BOSS_LIST, BOSS_COUNT, g_bossDefeated,
+                           [](const BossInfo& b) { return b.name; },
+                           [](const BossInfo& b) { return b.section; });
+    }
 
-    lines.push_back({ L"Bonfires Lit: " + std::to_wstring(litCount) + L" / " + std::to_wstring(BONFIRE_COUNT),
-                      COLOR_SUMMARY, PAD_LEFT });
-    AppendGroupedLines(lines, BONFIRE_LIST, BONFIRE_COUNT, g_bonfireLit,
-                       [](const BonfireInfo& b) { return b.name; },
-                       [](const BonfireInfo& b) { return b.area; });
+    if (g_settings.showBonfires) {
+        lines.push_back({ L"Bonfires Lit: " + std::to_wstring(litCount) + L" / " + std::to_wstring(BONFIRE_COUNT),
+                          COLOR_SUMMARY, PAD_LEFT });
+        AppendGroupedLines(lines, BONFIRE_LIST, BONFIRE_COUNT, g_bonfireLit,
+                           [](const BonfireInfo& b) { return b.name; },
+                           [](const BonfireInfo& b) { return b.area; });
+    }
+
+    // With everything switched off there'd be nothing to draw and the window
+    // would collapse to nothing, which looks like a crash. Say so instead.
+    if (lines.empty()) {
+        lines.push_back({ L"(all sections hidden)", COLOR_SUMMARY, PAD_LEFT });
+    }
 
     return lines;
 }
@@ -256,12 +275,26 @@ void RenderOverlay(HWND hwnd) {
     // Decide the shape of this frame before drawing it. The window is
     // resized to match, so it always ends up exactly big enough.
     int heightBudget = GetSystemMetrics(SM_CYSCREEN) - 2 * SCREEN_MARGIN;
-    ColumnLayout layout = PlanColumns((int)lines.size(), LINE_HEIGHT,
-                                      PAD_TOP + PAD_BOTTOM, heightBudget);
+    int widthBudget = GetSystemMetrics(SM_CXSCREEN) - 2 * SCREEN_MARGIN;
+    int maxColumns = (g_columnWidth > 0) ? (widthBudget / g_columnWidth) : 1;
+
+    ColumnLayout layout = PlanColumns((int)lines.size(), g_lineHeight,
+                                      PAD_TOP + PAD_BOTTOM, heightBudget, maxColumns);
+
+    // If some lines had nowhere to go, replace the last visible line with a
+    // note saying so - better than letting them fall off the screen unseen.
+    if (layout.droppedLines > 0) {
+        size_t visible = (size_t)layout.columns * layout.linesPerColumn;
+        if (visible > 0 && visible <= lines.size()) {
+            lines.resize(visible);
+            lines.back() = { L"(+" + std::to_wstring(layout.droppedLines + 1)
+                             + L" more - lower fontSize)", COLOR_SUMMARY, PAD_LEFT };
+        }
+    }
     g_columnCount = layout.columns;
     g_linesPerColumn = layout.linesPerColumn;
     g_windowWidth = g_columnWidth * g_columnCount;
-    g_windowHeight = PAD_TOP + PAD_BOTTOM + g_linesPerColumn * LINE_HEIGHT;
+    g_windowHeight = PAD_TOP + PAD_BOTTOM + g_linesPerColumn * g_lineHeight;
 
     SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, g_windowWidth, g_windowHeight,
                  SWP_NOMOVE | SWP_NOACTIVATE);
@@ -293,9 +326,9 @@ void RenderOverlay(HWND hwnd) {
         int row = (int)i % g_linesPerColumn;
         int columnLeft = column * g_columnWidth;
 
-        int y = PAD_TOP + row * LINE_HEIGHT;
+        int y = PAD_TOP + row * g_lineHeight;
         RECT lineRect = { columnLeft + lines[i].indent, y,
-                          columnLeft + g_columnWidth - PAD_RIGHT, y + LINE_HEIGHT };
+                          columnLeft + g_columnWidth - PAD_RIGHT, y + g_lineHeight };
 
         SetTextColor(memDC, lines[i].color);
         DrawText(memDC, lines[i].text.c_str(), -1, &lineRect, DT_LEFT | DT_TOP);
@@ -469,13 +502,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
         FillDemoData();
     }
 
+    // Settings first: the font size decides every other measurement.
+    g_settings = LoadSettings();
+    ApplyFontSize(g_settings.fontSize);
+
     // A column is as wide as the longest line that can appear in it. The
     // window is this wide times however many columns the layout ends up
     // needing; RenderOverlay resizes it to fit on the first frame.
     g_columnWidth = MeasureRequiredWidth();
     g_windowWidth = g_columnWidth;
-    g_windowHeight = LINE_HEIGHT + PAD_TOP + PAD_BOTTOM;
-    g_settings = LoadSettings();
+    g_windowHeight = g_lineHeight + PAD_TOP + PAD_BOTTOM;
 
     WNDCLASS wc = {};
     wc.lpfnWndProc = WindowProc;
