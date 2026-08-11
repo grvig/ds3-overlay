@@ -89,12 +89,17 @@ int MeasureRequiredWidth() {
     HFONT font = CreateOverlayFont();
     HFONT oldFont = (HFONT)SelectObject(measureDC, font);
 
+    // Headers carry a progress suffix, so measure them with the widest one
+    // that could appear rather than the bare group name.
+    const std::wstring widestSuffix = L"  00/00";
+
     int widest = 0;
     const wchar_t* lastSection = nullptr;
     for (int i = 0; i < BOSS_COUNT; i++) {
         if (lastSection == nullptr || wcscmp(lastSection, BOSS_LIST[i].section) != 0) {
             lastSection = BOSS_LIST[i].section;
-            widest = std::max(widest, MeasureLineWidth(measureDC, lastSection, PAD_LEFT));
+            std::wstring header = std::wstring(lastSection) + widestSuffix;
+            widest = std::max(widest, MeasureLineWidth(measureDC, header.c_str(), PAD_LEFT));
         }
         widest = std::max(widest, MeasureLineWidth(measureDC, BOSS_LIST[i].name, BOSS_INDENT));
     }
@@ -103,7 +108,8 @@ int MeasureRequiredWidth() {
     for (int i = 0; i < BONFIRE_COUNT; i++) {
         if (lastArea == nullptr || wcscmp(lastArea, BONFIRE_LIST[i].area) != 0) {
             lastArea = BONFIRE_LIST[i].area;
-            widest = std::max(widest, MeasureLineWidth(measureDC, lastArea, PAD_LEFT));
+            std::wstring header = std::wstring(lastArea) + widestSuffix;
+            widest = std::max(widest, MeasureLineWidth(measureDC, header.c_str(), PAD_LEFT));
         }
         widest = std::max(widest, MeasureLineWidth(measureDC, BONFIRE_LIST[i].name, BOSS_INDENT));
     }
@@ -146,17 +152,36 @@ const COLORREF COLOR_SUMMARY = RGB(255, 255, 0);
 const COLORREF COLOR_WAITING = RGB(255, 255, 0);
 
 // Builds the lines for one grouped list (bosses, bonfires), adding a header
-// each time the group changes.
+// each time the group changes. Each header carries that group's progress, so
+// "which area am I still missing something in" is answerable at a glance
+// instead of by counting down the list.
 template <typename T, typename NameFn, typename GroupFn>
 void AppendGroupedLines(std::vector<OverlayLine>& lines, const T* list, int count,
                         const bool* done, NameFn nameOf, GroupFn groupOf) {
-    const wchar_t* lastGroup = nullptr;
-    for (int i = 0; i < count; i++) {
-        if (lastGroup == nullptr || wcscmp(lastGroup, groupOf(list[i])) != 0) {
-            lastGroup = groupOf(list[i]);
-            lines.push_back({ lastGroup, COLOR_HEADER, PAD_LEFT });
+    int i = 0;
+    while (i < count) {
+        const wchar_t* group = groupOf(list[i]);
+
+        // Look ahead over this group to total it up before writing the
+        // header, since the header shows the group's own progress.
+        int groupSize = 0;
+        int groupDone = 0;
+        for (int j = i; j < count && wcscmp(groupOf(list[j]), group) == 0; j++) {
+            groupSize++;
+            if (done[j]) {
+                groupDone++;
+            }
         }
-        lines.push_back({ nameOf(list[i]), done[i] ? COLOR_DONE : COLOR_NOT_DONE, BOSS_INDENT });
+
+        std::wstring header = std::wstring(group) + L"  " + std::to_wstring(groupDone)
+                            + L"/" + std::to_wstring(groupSize);
+        // A finished group is worth spotting immediately.
+        lines.push_back({ header, (groupDone == groupSize) ? COLOR_DONE : COLOR_HEADER, PAD_LEFT });
+
+        for (int j = 0; j < groupSize; j++) {
+            lines.push_back({ nameOf(list[i + j]), done[i + j] ? COLOR_DONE : COLOR_NOT_DONE, BOSS_INDENT });
+        }
+        i += groupSize;
     }
 }
 
