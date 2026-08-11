@@ -8,6 +8,7 @@
 #include <string>
 #include <cstring>
 #include <algorithm>
+#include <vector>
 #include "ds3reader.h"
 #include "settings.h"
 
@@ -117,6 +118,71 @@ int MeasureRequiredWidth() {
     return widest + SLACK + PAD_RIGHT;
 }
 
+// One line of text to put on screen. The frame is assembled as a list of
+// these first and drawn afterwards, which keeps "what to show" separate from
+// "where it goes" - needed once the list is long enough to need laying out
+// in more than one column.
+struct OverlayLine {
+    std::wstring text;
+    COLORREF color;
+    int indent;
+};
+
+const COLORREF COLOR_HEADER = RGB(150, 150, 255);
+const COLORREF COLOR_DONE = RGB(0, 255, 0);
+const COLORREF COLOR_NOT_DONE = RGB(255, 255, 255);
+const COLORREF COLOR_SUMMARY = RGB(255, 255, 0);
+const COLORREF COLOR_WAITING = RGB(255, 255, 0);
+
+// Builds the lines for one grouped list (bosses, bonfires), adding a header
+// each time the group changes.
+template <typename T, typename NameFn, typename GroupFn>
+void AppendGroupedLines(std::vector<OverlayLine>& lines, const T* list, int count,
+                        const bool* done, NameFn nameOf, GroupFn groupOf) {
+    const wchar_t* lastGroup = nullptr;
+    for (int i = 0; i < count; i++) {
+        if (lastGroup == nullptr || wcscmp(lastGroup, groupOf(list[i])) != 0) {
+            lastGroup = groupOf(list[i]);
+            lines.push_back({ lastGroup, COLOR_HEADER, PAD_LEFT });
+        }
+        lines.push_back({ nameOf(list[i]), done[i] ? COLOR_DONE : COLOR_NOT_DONE, BOSS_INDENT });
+    }
+}
+
+std::vector<OverlayLine> BuildOverlayLines() {
+    std::vector<OverlayLine> lines;
+
+    if (!g_connected) {
+        std::wstring waitingText = L"Waiting for Dark Souls III...";
+        if (g_firstSeenTick != 0) {
+            DWORD elapsed = GetTickCount() - g_firstSeenTick;
+            DWORD remainingMs = (elapsed < STARTUP_GRACE_MS) ? (STARTUP_GRACE_MS - elapsed) : 0;
+            int remainingSec = (int)((remainingMs + 999) / 1000);
+            waitingText = L"Found game, connecting in " + std::to_wstring(remainingSec) + L"s...";
+        }
+        lines.push_back({ waitingText, COLOR_WAITING, PAD_LEFT });
+        return lines;
+    }
+
+    int defeatedCount = 0;
+    for (int i = 0; i < BOSS_COUNT; i++) {
+        if (g_bossDefeated[i]) {
+            defeatedCount++;
+        }
+    }
+
+    lines.push_back({ g_soulsAvailable ? L"Souls: " + std::to_wstring(g_souls) : L"Souls: --",
+                      COLOR_NOT_DONE, PAD_LEFT });
+    lines.push_back({ L"Bosses Defeated: " + std::to_wstring(defeatedCount) + L" / " + std::to_wstring(BOSS_COUNT),
+                      COLOR_SUMMARY, PAD_LEFT });
+
+    AppendGroupedLines(lines, BOSS_LIST, BOSS_COUNT, g_bossDefeated,
+                       [](const BossInfo& b) { return b.name; },
+                       [](const BossInfo& b) { return b.section; });
+
+    return lines;
+}
+
 // Renders the current frame into a true per-pixel-transparent bitmap and
 // hands it to Windows as the window's whole appearance. Unlike the old
 // "treat this one color as invisible" trick, every pixel gets its own real
@@ -147,54 +213,13 @@ void RenderOverlay(HWND hwnd) {
 
     const int textRight = g_windowWidth - PAD_RIGHT;
 
-    if (!g_connected) {
-        SetTextColor(memDC, RGB(255, 255, 0));
-        RECT textRect = { PAD_LEFT, PAD_TOP, textRight, PAD_TOP + 2 * LINE_HEIGHT };
-
-        std::wstring waitingText = L"Waiting for Dark Souls III...";
-        if (g_firstSeenTick != 0) {
-            DWORD elapsed = GetTickCount() - g_firstSeenTick;
-            DWORD remainingMs = (elapsed < STARTUP_GRACE_MS) ? (STARTUP_GRACE_MS - elapsed) : 0;
-            int remainingSec = (int)((remainingMs + 999) / 1000);
-            waitingText = L"Found game, connecting in " + std::to_wstring(remainingSec) + L"s...";
-        }
-        DrawText(memDC, waitingText.c_str(), -1, &textRect, DT_LEFT | DT_TOP);
-    } else {
-        int defeatedCount = 0;
-        for (int i = 0; i < BOSS_COUNT; i++) {
-            if (g_bossDefeated[i]) {
-                defeatedCount++;
-            }
-        }
-
-        std::wstring soulsLine = g_soulsAvailable
-            ? L"Souls: " + std::to_wstring(g_souls)
-            : L"Souls: --";
-        SetTextColor(memDC, RGB(255, 255, 255));
-        RECT soulsRect = { PAD_LEFT, PAD_TOP, textRight, PAD_TOP + LINE_HEIGHT };
-        DrawText(memDC, soulsLine.c_str(), -1, &soulsRect, DT_LEFT | DT_TOP);
-
-        std::wstring summary = L"Bosses Defeated: " + std::to_wstring(defeatedCount) + L" / " + std::to_wstring(BOSS_COUNT);
-        SetTextColor(memDC, RGB(255, 255, 0));
-        RECT summaryRect = { PAD_LEFT, PAD_TOP + LINE_HEIGHT, textRight, PAD_TOP + LINE_HEIGHT + SUMMARY_HEIGHT };
-        DrawText(memDC, summary.c_str(), -1, &summaryRect, DT_LEFT | DT_TOP);
-
-        int y = PAD_TOP + LINE_HEIGHT + SUMMARY_HEIGHT;
-        const wchar_t* lastSection = nullptr;
-        for (int i = 0; i < BOSS_COUNT; i++) {
-            if (lastSection == nullptr || wcscmp(lastSection, BOSS_LIST[i].section) != 0) {
-                lastSection = BOSS_LIST[i].section;
-                SetTextColor(memDC, RGB(150, 150, 255));
-                RECT headerRect = { PAD_LEFT, y, textRight, y + LINE_HEIGHT };
-                DrawText(memDC, lastSection, -1, &headerRect, DT_LEFT | DT_TOP);
-                y += LINE_HEIGHT;
-            }
-
-            SetTextColor(memDC, g_bossDefeated[i] ? RGB(0, 255, 0) : RGB(255, 255, 255));
-            RECT lineRect = { BOSS_INDENT, y, textRight, y + LINE_HEIGHT };
-            DrawText(memDC, BOSS_LIST[i].name, -1, &lineRect, DT_LEFT | DT_TOP);
-            y += LINE_HEIGHT;
-        }
+    std::vector<OverlayLine> lines = BuildOverlayLines();
+    int y = PAD_TOP;
+    for (size_t i = 0; i < lines.size(); i++) {
+        SetTextColor(memDC, lines[i].color);
+        RECT lineRect = { lines[i].indent, y, textRight, y + LINE_HEIGHT };
+        DrawText(memDC, lines[i].text.c_str(), -1, &lineRect, DT_LEFT | DT_TOP);
+        y += LINE_HEIGHT;
     }
 
     // GDI only paints the color channels, not transparency. Since we started
