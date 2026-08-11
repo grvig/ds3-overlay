@@ -11,6 +11,7 @@
 #include <vector>
 #include "ds3reader.h"
 #include "settings.h"
+#include "layout.h"
 
 Ds3Connection g_conn;
 bool g_connected = false;
@@ -52,29 +53,18 @@ HFONT CreateOverlayFont() {
     );
 }
 
-// The boss list is grouped into sections (Base Game, Ashes of Ariandel, The
-// Ringed City) with a header line above each group. Count how many section
-// headers there are so the window is made tall enough to fit them.
-int CountSections() {
-    int count = 0;
-    const wchar_t* lastSection = nullptr;
-    for (int i = 0; i < BOSS_COUNT; i++) {
-        if (lastSection == nullptr || wcscmp(lastSection, BOSS_LIST[i].section) != 0) {
-            count++;
-            lastSection = BOSS_LIST[i].section;
-        }
-    }
-    return count;
-}
-const int SECTION_COUNT = CountSections();
-const int WINDOW_HEIGHT = PAD_TOP + PAD_BOTTOM + LINE_HEIGHT + SUMMARY_HEIGHT
-                        + BOSS_COUNT * LINE_HEIGHT + SECTION_COUNT * LINE_HEIGHT;
-
-// Width is measured rather than guessed: whatever the longest line actually
-// renders as decides how wide the window needs to be. A fixed guess either
-// clipped long boss names or left a band of dead space, and it broke
-// whenever the font or the boss list changed.
+// Width and height are worked out at runtime from what's actually being
+// shown. A fixed guess either clipped content or left dead space, and broke
+// whenever the font or the tracked lists changed.
 int g_windowWidth = 0;
+int g_windowHeight = 0;
+
+// When the list is too tall for the screen it's split into side-by-side
+// columns rather than running off the bottom. The overlay is click-through,
+// so anything off-screen would be unreachable - there's nothing to scroll.
+int g_columnCount = 1;
+int g_linesPerColumn = 0;
+int g_columnWidth = 0;
 
 int MeasureLineWidth(HDC dc, const wchar_t* text, int indent) {
     SIZE size = {};
@@ -189,12 +179,26 @@ std::vector<OverlayLine> BuildOverlayLines() {
 // transparency level, so text edges blend cleanly with whatever is behind
 // the overlay instead of picking up a tint from a fake background color.
 void RenderOverlay(HWND hwnd) {
+    std::vector<OverlayLine> lines = BuildOverlayLines();
+
+    // Decide the shape of this frame before drawing it. The window is
+    // resized to match, so it always ends up exactly big enough.
+    ColumnLayout layout = PlanColumns((int)lines.size(), LINE_HEIGHT,
+                                      PAD_TOP + PAD_BOTTOM, GetSystemMetrics(SM_CYSCREEN));
+    g_columnCount = layout.columns;
+    g_linesPerColumn = layout.linesPerColumn;
+    g_windowWidth = g_columnWidth * g_columnCount;
+    g_windowHeight = PAD_TOP + PAD_BOTTOM + g_linesPerColumn * LINE_HEIGHT;
+
+    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, g_windowWidth, g_windowHeight,
+                 SWP_NOMOVE | SWP_NOACTIVATE);
+
     HDC screenDC = GetDC(nullptr);
 
     BITMAPINFO bmi = {};
     bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     bmi.bmiHeader.biWidth = g_windowWidth;
-    bmi.bmiHeader.biHeight = -WINDOW_HEIGHT; // negative = top-down, easier to reason about
+    bmi.bmiHeader.biHeight = -g_windowHeight; // negative = top-down, easier to reason about
     bmi.bmiHeader.biPlanes = 1;
     bmi.bmiHeader.biBitCount = 32;
     bmi.bmiHeader.biCompression = BI_RGB;
@@ -205,21 +209,23 @@ void RenderOverlay(HWND hwnd) {
     HBITMAP oldBitmap = (HBITMAP)SelectObject(memDC, bitmap);
 
     // Start fully transparent (all zero bytes = black, 0 alpha) everywhere.
-    memset(pixels, 0, g_windowWidth * WINDOW_HEIGHT * 4);
+    memset(pixels, 0, g_windowWidth * g_windowHeight * 4);
 
     SetBkMode(memDC, TRANSPARENT);
     HFONT font = CreateOverlayFont();
     HFONT oldFont = (HFONT)SelectObject(memDC, font);
 
-    const int textRight = g_windowWidth - PAD_RIGHT;
-
-    std::vector<OverlayLine> lines = BuildOverlayLines();
-    int y = PAD_TOP;
     for (size_t i = 0; i < lines.size(); i++) {
+        int column = (int)i / g_linesPerColumn;
+        int row = (int)i % g_linesPerColumn;
+        int columnLeft = column * g_columnWidth;
+
+        int y = PAD_TOP + row * LINE_HEIGHT;
+        RECT lineRect = { columnLeft + lines[i].indent, y,
+                          columnLeft + g_columnWidth - PAD_RIGHT, y + LINE_HEIGHT };
+
         SetTextColor(memDC, lines[i].color);
-        RECT lineRect = { lines[i].indent, y, textRight, y + LINE_HEIGHT };
         DrawText(memDC, lines[i].text.c_str(), -1, &lineRect, DT_LEFT | DT_TOP);
-        y += LINE_HEIGHT;
     }
 
     // GDI only paints the color channels, not transparency. Since we started
@@ -228,7 +234,7 @@ void RenderOverlay(HWND hwnd) {
     // exactly the format Windows wants for blending: color pre-multiplied
     // by transparency).
     BYTE* bytes = (BYTE*)pixels;
-    for (int i = 0; i < g_windowWidth * WINDOW_HEIGHT; i++) {
+    for (int i = 0; i < g_windowWidth * g_windowHeight; i++) {
         BYTE b = bytes[i * 4 + 0];
         BYTE g = bytes[i * 4 + 1];
         BYTE r = bytes[i * 4 + 2];
@@ -237,7 +243,7 @@ void RenderOverlay(HWND hwnd) {
     }
 
     POINT srcPos = { 0, 0 };
-    SIZE size = { g_windowWidth, WINDOW_HEIGHT };
+    SIZE size = { g_windowWidth, g_windowHeight };
     BLENDFUNCTION blend = { AC_SRC_OVER, 0, 255, AC_SRC_ALPHA };
     UpdateLayeredWindow(hwnd, screenDC, nullptr, &size, memDC, &srcPos, 0, &blend, ULW_ALPHA);
 
@@ -260,7 +266,7 @@ void MoveToNextCorner(HWND hwnd) {
     int left = MARGIN;
     int right = screenW - g_windowWidth - MARGIN;
     int top = MARGIN;
-    int bottom = screenH - WINDOW_HEIGHT - MARGIN;
+    int bottom = screenH - g_windowHeight - MARGIN;
 
     // If the overlay is taller than the screen, keep it pinned to the top
     // rather than pushing its start position off-screen.
@@ -375,9 +381,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     const wchar_t CLASS_NAME[] = L"DS3OverlayWindowClass";
 
-    // Work out how wide the window needs to be before creating it, and where
-    // the user wants it.
-    g_windowWidth = MeasureRequiredWidth();
+    // A column is as wide as the longest line that can appear in it. The
+    // window is this wide times however many columns the layout ends up
+    // needing; RenderOverlay resizes it to fit on the first frame.
+    g_columnWidth = MeasureRequiredWidth();
+    g_windowWidth = g_columnWidth;
+    g_windowHeight = LINE_HEIGHT + PAD_TOP + PAD_BOTTOM;
     g_settings = LoadSettings();
 
     WNDCLASS wc = {};
@@ -394,7 +403,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
         CLASS_NAME,
         L"DS3 Overlay",
         WS_POPUP,
-        g_settings.x, g_settings.y, g_windowWidth, WINDOW_HEIGHT,
+        g_settings.x, g_settings.y, g_windowWidth, g_windowHeight,
         nullptr, nullptr, hInstance, nullptr
     );
 

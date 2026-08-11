@@ -8,6 +8,7 @@
 //      mid-session twice, so it's worth a permanent guard.
 #include "ds3reader.h"
 #include "bonfires.h"
+#include "layout.h"
 
 #include <iostream>
 #include <set>
@@ -133,9 +134,47 @@ static void TestBatchSafety() {
               << " bonfires each need one pass" << std::endl;
 }
 
+static void TestColumnLayout() {
+    std::cout << "column layout:" << std::endl;
+
+    const int LINE_HEIGHT = 20;
+    const int PADDING = 40;
+    const int SCREEN = 864; // the screen this was developed against
+
+    // Short lists stay in a single column.
+    ColumnLayout one = PlanColumns(10, LINE_HEIGHT, PADDING, SCREEN);
+    Check(one.columns == 1, "a 10-line list should need one column");
+
+    // Nothing may ever be laid out taller than the screen - the overlay is
+    // click-through, so anything off-screen is unreachable.
+    for (int lineCount = 1; lineCount <= 400; lineCount++) {
+        ColumnLayout layout = PlanColumns(lineCount, LINE_HEIGHT, PADDING, SCREEN);
+        int height = PADDING + layout.linesPerColumn * LINE_HEIGHT;
+        Check(height <= SCREEN, "layout taller than screen at " + std::to_string(lineCount) + " lines");
+        Check(layout.columns >= 1, "column count must be at least 1");
+        Check(layout.linesPerColumn >= 1, "lines per column must be at least 1");
+        // Every line must land somewhere.
+        Check(layout.columns * layout.linesPerColumn >= lineCount,
+              "layout drops lines at " + std::to_string(lineCount));
+    }
+    std::cout << "  1..400 lines: always fits on screen, never drops a line" << std::endl;
+
+    // The real combined list must fit.
+    int bossLines = 2 + BOSS_COUNT + 3;          // souls + summary + bosses + section headers
+    int bonfireLines = 1 + BONFIRE_COUNT + 14;   // summary + bonfires + area headers
+    int total = bossLines + bonfireLines;
+    ColumnLayout real = PlanColumns(total, LINE_HEIGHT, PADDING, SCREEN);
+    int realHeight = PADDING + real.linesPerColumn * LINE_HEIGHT;
+    Check(realHeight <= SCREEN, "the real combined list does not fit on screen");
+    std::cout << "  bosses + bonfires = " << total << " lines -> "
+              << real.columns << " columns of " << real.linesPerColumn
+              << " (" << realHeight << "px tall, screen is " << SCREEN << "px)" << std::endl;
+}
+
 int main() {
     TestDataLists();
     TestBatchSafety();
+    TestColumnLayout();
 
     std::cout << std::endl;
     if (g_failures == 0) {
