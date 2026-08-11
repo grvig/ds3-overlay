@@ -139,18 +139,25 @@ static void TestColumnLayout() {
 
     const int LINE_HEIGHT = 20;
     const int PADDING = 40;
+    const int SCREEN_MARGIN = 10;
     const int SCREEN = 864; // the screen this was developed against
+    // The overlay sits SCREEN_MARGIN from the top, so the layout only gets
+    // the screen minus a margin at each end. Budgeting the full height once
+    // put the bottom line 6px off-screen.
+    const int BUDGET = SCREEN - 2 * SCREEN_MARGIN;
 
     // Short lists stay in a single column.
-    ColumnLayout one = PlanColumns(10, LINE_HEIGHT, PADDING, SCREEN);
+    ColumnLayout one = PlanColumns(10, LINE_HEIGHT, PADDING, BUDGET);
     Check(one.columns == 1, "a 10-line list should need one column");
 
-    // Nothing may ever be laid out taller than the screen - the overlay is
-    // click-through, so anything off-screen is unreachable.
+    // Nothing may ever be laid out so tall that it runs off the bottom once
+    // placed - the overlay is click-through, so anything off-screen is
+    // unreachable and there is nothing to scroll.
     for (int lineCount = 1; lineCount <= 400; lineCount++) {
-        ColumnLayout layout = PlanColumns(lineCount, LINE_HEIGHT, PADDING, SCREEN);
+        ColumnLayout layout = PlanColumns(lineCount, LINE_HEIGHT, PADDING, BUDGET);
         int height = PADDING + layout.linesPerColumn * LINE_HEIGHT;
-        Check(height <= SCREEN, "layout taller than screen at " + std::to_string(lineCount) + " lines");
+        Check(SCREEN_MARGIN + height <= SCREEN,
+              "runs off the bottom at " + std::to_string(lineCount) + " lines");
         Check(layout.columns >= 1, "column count must be at least 1");
         Check(layout.linesPerColumn >= 1, "lines per column must be at least 1");
         // Every line must land somewhere.
@@ -159,16 +166,17 @@ static void TestColumnLayout() {
     }
     std::cout << "  1..400 lines: always fits on screen, never drops a line" << std::endl;
 
-    // The real combined list must fit.
+    // The real combined list must fit, placed at its real position.
     int bossLines = 2 + BOSS_COUNT + 3;          // souls + summary + bosses + section headers
     int bonfireLines = 1 + BONFIRE_COUNT + 14;   // summary + bonfires + area headers
     int total = bossLines + bonfireLines;
-    ColumnLayout real = PlanColumns(total, LINE_HEIGHT, PADDING, SCREEN);
+    ColumnLayout real = PlanColumns(total, LINE_HEIGHT, PADDING, BUDGET);
     int realHeight = PADDING + real.linesPerColumn * LINE_HEIGHT;
-    Check(realHeight <= SCREEN, "the real combined list does not fit on screen");
+    Check(SCREEN_MARGIN + realHeight <= SCREEN, "the real combined list runs off the screen");
     std::cout << "  bosses + bonfires = " << total << " lines -> "
               << real.columns << " columns of " << real.linesPerColumn
-              << " (" << realHeight << "px tall, screen is " << SCREEN << "px)" << std::endl;
+              << " (" << realHeight << "px tall, bottom at "
+              << (SCREEN_MARGIN + realHeight) << " on a " << SCREEN << "px screen)" << std::endl;
 }
 
 int main() {

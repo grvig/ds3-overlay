@@ -16,8 +16,13 @@
 Ds3Connection g_conn;
 bool g_connected = false;
 bool g_bossDefeated[BOSS_COUNT] = {};
+bool g_bonfireLit[BONFIRE_COUNT] = {};
 uint32_t g_souls = 0;
 bool g_soulsAvailable = false;
+
+// Demo mode (overlay.exe --demo) fills in made-up progress so the layout can
+// be checked without launching the game. It never touches the game process.
+bool g_demoMode = false;
 
 // How long to wait after first spotting the game process before we actually
 // attach to it and inject code. Attaching the instant the process appears
@@ -44,6 +49,12 @@ const int PAD_RIGHT = 20;
 const int PAD_TOP = 20;
 const int PAD_BOTTOM = 20;
 const int BOSS_INDENT = 30;
+
+// Gap kept between the overlay and the edges of the screen. The layout has
+// to allow for this at the top AND the bottom: the window doesn't start at
+// y=0, so budgeting the full screen height would push the last line off the
+// bottom by however far down the window starts.
+const int SCREEN_MARGIN = 10;
 
 HFONT CreateOverlayFont() {
     return CreateFont(
@@ -88,12 +99,22 @@ int MeasureRequiredWidth() {
         widest = std::max(widest, MeasureLineWidth(measureDC, BOSS_LIST[i].name, BOSS_INDENT));
     }
 
-    // The status lines can be wider than any boss name, so measure them too.
-    // Use worst-case stand-ins rather than the live values, so the window
-    // doesn't need resizing as the numbers change.
+    const wchar_t* lastArea = nullptr;
+    for (int i = 0; i < BONFIRE_COUNT; i++) {
+        if (lastArea == nullptr || wcscmp(lastArea, BONFIRE_LIST[i].area) != 0) {
+            lastArea = BONFIRE_LIST[i].area;
+            widest = std::max(widest, MeasureLineWidth(measureDC, lastArea, PAD_LEFT));
+        }
+        widest = std::max(widest, MeasureLineWidth(measureDC, BONFIRE_LIST[i].name, BOSS_INDENT));
+    }
+
+    // The status lines can be wider than any name, so measure them too. Use
+    // worst-case stand-ins rather than the live values, so the column width
+    // doesn't change as the numbers do.
     widest = std::max(widest, MeasureLineWidth(measureDC, L"Waiting for Dark Souls III...", PAD_LEFT));
     widest = std::max(widest, MeasureLineWidth(measureDC, L"Found game, connecting in 00s...", PAD_LEFT));
     widest = std::max(widest, MeasureLineWidth(measureDC, L"Bosses Defeated: 00 / 00", PAD_LEFT));
+    widest = std::max(widest, MeasureLineWidth(measureDC, L"Bonfires Lit: 00 / 00", PAD_LEFT));
     widest = std::max(widest, MeasureLineWidth(measureDC, L"Souls: 9999999999", PAD_LEFT));
 
     SelectObject(measureDC, oldFont);
@@ -160,17 +181,43 @@ std::vector<OverlayLine> BuildOverlayLines() {
             defeatedCount++;
         }
     }
+    int litCount = 0;
+    for (int i = 0; i < BONFIRE_COUNT; i++) {
+        if (g_bonfireLit[i]) {
+            litCount++;
+        }
+    }
 
     lines.push_back({ g_soulsAvailable ? L"Souls: " + std::to_wstring(g_souls) : L"Souls: --",
                       COLOR_NOT_DONE, PAD_LEFT });
+
     lines.push_back({ L"Bosses Defeated: " + std::to_wstring(defeatedCount) + L" / " + std::to_wstring(BOSS_COUNT),
                       COLOR_SUMMARY, PAD_LEFT });
-
     AppendGroupedLines(lines, BOSS_LIST, BOSS_COUNT, g_bossDefeated,
                        [](const BossInfo& b) { return b.name; },
                        [](const BossInfo& b) { return b.section; });
 
+    lines.push_back({ L"Bonfires Lit: " + std::to_wstring(litCount) + L" / " + std::to_wstring(BONFIRE_COUNT),
+                      COLOR_SUMMARY, PAD_LEFT });
+    AppendGroupedLines(lines, BONFIRE_LIST, BONFIRE_COUNT, g_bonfireLit,
+                       [](const BonfireInfo& b) { return b.name; },
+                       [](const BonfireInfo& b) { return b.area; });
+
     return lines;
+}
+
+// Stands in for the game when running with --demo: marks roughly the first
+// half of each list as done so the layout can be seen at a realistic size.
+void FillDemoData() {
+    for (int i = 0; i < BOSS_COUNT; i++) {
+        g_bossDefeated[i] = (i < BOSS_COUNT / 2);
+    }
+    for (int i = 0; i < BONFIRE_COUNT; i++) {
+        g_bonfireLit[i] = (i < BONFIRE_COUNT / 2);
+    }
+    g_souls = 123456;
+    g_soulsAvailable = true;
+    g_connected = true;
 }
 
 // Renders the current frame into a true per-pixel-transparent bitmap and
@@ -183,8 +230,9 @@ void RenderOverlay(HWND hwnd) {
 
     // Decide the shape of this frame before drawing it. The window is
     // resized to match, so it always ends up exactly big enough.
+    int heightBudget = GetSystemMetrics(SM_CYSCREEN) - 2 * SCREEN_MARGIN;
     ColumnLayout layout = PlanColumns((int)lines.size(), LINE_HEIGHT,
-                                      PAD_TOP + PAD_BOTTOM, GetSystemMetrics(SM_CYSCREEN));
+                                      PAD_TOP + PAD_BOTTOM, heightBudget);
     g_columnCount = layout.columns;
     g_linesPerColumn = layout.linesPerColumn;
     g_windowWidth = g_columnWidth * g_columnCount;
@@ -259,7 +307,7 @@ void RenderOverlay(HWND hwnd) {
 // first. Corners are inset by the same margin the default position uses, so
 // the overlay never sits flush against a screen edge.
 void MoveToNextCorner(HWND hwnd) {
-    const int MARGIN = 10;
+    const int MARGIN = SCREEN_MARGIN;
     int screenW = GetSystemMetrics(SM_CXSCREEN);
     int screenH = GetSystemMetrics(SM_CYSCREEN);
 
@@ -337,6 +385,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             // If the game has been closed since our last check, forget the
             // old connection and go back to "waiting" instead of showing
             // stale or wrong boss info.
+            if (g_demoMode) {
+                // Demo mode never talks to the game; its data is already set.
+                RenderOverlay(hwnd);
+                return 0;
+            }
+
             if (g_connected) {
                 DWORD exitCode = 0;
                 bool stillRunning = GetExitCodeProcess(g_conn.process, &exitCode) && exitCode == STILL_ACTIVE;
@@ -363,9 +417,13 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 }
             }
             if (g_connected) {
-                std::vector<uint8_t> flags = ReadAllBossFlags(g_conn);
+                std::vector<uint8_t> bossFlags = ReadAllBossFlags(g_conn);
                 for (int i = 0; i < BOSS_COUNT; i++) {
-                    g_bossDefeated[i] = flags[i];
+                    g_bossDefeated[i] = bossFlags[i];
+                }
+                std::vector<uint8_t> bonfireFlags = ReadAllBonfireFlags(g_conn);
+                for (int i = 0; i < BONFIRE_COUNT; i++) {
+                    g_bonfireLit[i] = bonfireFlags[i];
                 }
                 g_soulsAvailable = ReadSouls(g_conn, g_souls);
             }
@@ -378,8 +436,13 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow) {
     const wchar_t CLASS_NAME[] = L"DS3OverlayWindowClass";
+
+    if (lpCmdLine != nullptr && strstr(lpCmdLine, "--demo") != nullptr) {
+        g_demoMode = true;
+        FillDemoData();
+    }
 
     // A column is as wide as the longest line that can appear in it. The
     // window is this wide times however many columns the layout ends up
