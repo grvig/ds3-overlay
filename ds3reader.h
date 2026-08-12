@@ -9,8 +9,6 @@
 #include <sstream>
 #include <vector>
 
-#include "bosses.h"
-#include "bonfires.h"
 
 DWORD FindProcessId(const wchar_t* processName) {
     DWORD pid = 0;
@@ -518,21 +516,3 @@ std::vector<uint8_t> ReadFlags(const Ds3Connection& conn, const std::vector<uint
                                   conn.getEventFlagAddr, conn.eventFlagMan, flagIds);
 }
 
-// Reads every boss's defeated flag from BOSS_LIST, batched rather than one
-// game round-trip per boss.
-std::vector<uint8_t> ReadAllBossFlags(const Ds3Connection& conn) {
-    std::vector<uint32_t> flagIds;
-    for (int i = 0; i < BOSS_COUNT; i++) {
-        flagIds.push_back(BOSS_LIST[i].defeatedFlag);
-    }
-    return ReadFlags(conn, flagIds);
-}
-
-// Same, for whether each bonfire has been lit.
-std::vector<uint8_t> ReadAllBonfireFlags(const Ds3Connection& conn) {
-    std::vector<uint32_t> flagIds;
-    for (int i = 0; i < BONFIRE_COUNT; i++) {
-        flagIds.push_back(BONFIRE_LIST[i].litFlag);
-    }
-    return ReadFlags(conn, flagIds);
-}

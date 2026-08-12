@@ -1,30 +1,40 @@
 #include "ds3reader.h"
+#include "tracked.h"
 #include <iostream>
 
 // Prints one line per entry, with a header whenever the group changes, and
 // returns how many were done. Mirrors how the overlay lays things out.
-template <typename T, typename NameFn, typename GroupFn>
-int PrintGroupedList(const T* list, int count, const std::vector<uint8_t>& flags,
-                     const wchar_t* doneWord, const wchar_t* notDoneWord,
-                     NameFn nameOf, GroupFn groupOf) {
+int PrintGroupedList(const std::vector<TrackedEntry>& list, const std::vector<uint8_t>& flags,
+                     const wchar_t* doneWord, const wchar_t* notDoneWord) {
     int doneCount = 0;
-    const wchar_t* lastGroup = nullptr;
-    for (int i = 0; i < count; i++) {
-        if (lastGroup == nullptr || wcscmp(lastGroup, groupOf(list[i])) != 0) {
-            lastGroup = groupOf(list[i]);
+    std::wstring lastGroup;
+    bool haveGroup = false;
+    for (size_t i = 0; i < list.size(); i++) {
+        if (!haveGroup || list[i].group != lastGroup) {
+            lastGroup = list[i].group;
+            haveGroup = true;
             std::wcout << L"\n  [" << lastGroup << L"]" << std::endl;
         }
-        bool done = flags[i] != 0;
+        bool done = (i < flags.size()) && flags[i] != 0;
         if (done) {
             doneCount++;
         }
-        std::wcout << L"    " << nameOf(list[i]) << L": "
+        std::wcout << L"    " << list[i].name << L": "
                    << (done ? doneWord : notDoneWord) << std::endl;
     }
     return doneCount;
 }
 
 int main() {
+    LoadTrackedLists();
+    if (g_tracked.AnyProblems()) {
+        std::cout << "Problems in the data files:" << std::endl;
+        for (size_t i = 0; i < g_tracked.problems.size(); i++) {
+            std::cout << "  " << g_tracked.problems[i] << std::endl;
+        }
+        std::cout << std::endl;
+    }
+
     Ds3Connection conn;
     if (!ConnectToDs3(conn)) {
         std::cout << "Failed to connect to DarkSoulsIII.exe. Is it running?" << std::endl;
@@ -45,27 +55,25 @@ int main() {
     }
 
     std::cout << "\n=== BOSSES ===" << std::endl;
-    std::vector<uint8_t> bossFlags = ReadAllBossFlags(conn);
-    int bossesDefeated = PrintGroupedList(
-        BOSS_LIST, BOSS_COUNT, bossFlags, L"defeated", L"not defeated",
-        [](const BossInfo& b) { return b.name; },
-        [](const BossInfo& b) { return b.section; });
+    std::vector<uint8_t> bossFlags = ReadFlags(conn, FlagsOf(g_tracked.bosses));
+    int bossesDefeated = PrintGroupedList(g_tracked.bosses, bossFlags, L"defeated", L"not defeated");
 
     std::cout << "\n=== BONFIRES ===" << std::endl;
-    std::vector<uint8_t> bonfireFlags = ReadAllBonfireFlags(conn);
-    int bonfiresLit = PrintGroupedList(
-        BONFIRE_LIST, BONFIRE_COUNT, bonfireFlags, L"lit", L"not lit",
-        [](const BonfireInfo& b) { return b.name; },
-        [](const BonfireInfo& b) { return b.area; });
+    std::vector<uint8_t> bonfireFlags = ReadFlags(conn, FlagsOf(g_tracked.bonfires));
+    int bonfiresLit = PrintGroupedList(g_tracked.bonfires, bonfireFlags, L"lit", L"not lit");
 
-    int totalTracked = BOSS_COUNT + BONFIRE_COUNT;
+    int bossCount = (int)g_tracked.bosses.size();
+    int bonfireCount = (int)g_tracked.bonfires.size();
+    int totalTracked = bossCount + bonfireCount;
     int totalDone = bossesDefeated + bonfiresLit;
 
     std::cout << "\n=== TOTALS ===" << std::endl;
-    std::cout << "Bosses defeated: " << bossesDefeated << " / " << BOSS_COUNT << std::endl;
-    std::cout << "Bonfires lit:    " << bonfiresLit << " / " << BONFIRE_COUNT << std::endl;
-    std::cout << "Completion:      " << (totalDone * 100 / totalTracked) << "%  ("
-              << totalDone << "/" << totalTracked << ")" << std::endl;
+    std::cout << "Bosses defeated: " << bossesDefeated << " / " << bossCount << std::endl;
+    std::cout << "Bonfires lit:    " << bonfiresLit << " / " << bonfireCount << std::endl;
+    if (totalTracked > 0) {
+        std::cout << "Completion:      " << (totalDone * 100 / totalTracked) << "%  ("
+                  << totalDone << "/" << totalTracked << ")" << std::endl;
+    }
 
     VirtualFreeEx(conn.process, conn.remoteBuffer, 0, MEM_RELEASE);
     CloseHandle(conn.process);

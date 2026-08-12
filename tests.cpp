@@ -7,7 +7,7 @@
 //      That overlap corrupted the game's own thread and closed the game
 //      mid-session twice, so it's worth a permanent guard.
 #include "ds3reader.h"
-#include "bonfires.h"
+#include "tracked.h"
 #include "layout.h"
 #include "datafile.h"
 
@@ -26,20 +26,16 @@ static void Check(bool ok, const std::string& what) {
     }
 }
 
-// Shared shape checks for any list of "thing with a name, a flag and a group".
-struct Entry {
-    const wchar_t* name;
-    uint32_t flag;
-    const wchar_t* group;
-};
+// Shared shape checks for any tracked list.
+static void CheckList(const std::string& label, const std::vector<TrackedEntry>& entries) {
+    Check(!entries.empty(), label + ": list is empty");
 
-static void CheckList(const std::string& label, const std::vector<Entry>& entries) {
     std::set<uint32_t> seenFlags;
     for (size_t i = 0; i < entries.size(); i++) {
         Check(seenFlags.insert(entries[i].flag).second,
               label + ": duplicate flag " + std::to_string(entries[i].flag));
-        Check(wcslen(entries[i].name) > 0, label + ": empty name at " + std::to_string(i));
-        Check(wcslen(entries[i].group) > 0, label + ": empty group at " + std::to_string(i));
+        Check(!entries[i].name.empty(), label + ": empty name at " + std::to_string(i));
+        Check(!entries[i].group.empty(), label + ": empty group at " + std::to_string(i));
         // DS3 event flags for bosses and bonfires are 8-digit ids.
         Check(entries[i].flag >= 13000000 && entries[i].flag <= 15999999,
               label + ": flag out of range at " + std::to_string(i));
@@ -48,12 +44,14 @@ static void CheckList(const std::string& label, const std::vector<Entry>& entrie
     // The overlay prints a header whenever the group changes, so a group that
     // reappears later would get a second header.
     std::set<std::wstring> closed;
-    const wchar_t* current = nullptr;
+    std::wstring current;
+    bool haveCurrent = false;
     int groups = 0;
     for (size_t i = 0; i < entries.size(); i++) {
-        if (current == nullptr || wcscmp(current, entries[i].group) != 0) {
-            if (current != nullptr) closed.insert(current);
+        if (!haveCurrent || entries[i].group != current) {
+            if (haveCurrent) closed.insert(current);
             current = entries[i].group;
+            haveCurrent = true;
             groups++;
             Check(closed.count(current) == 0, label + ": group is not contiguous");
         }
@@ -66,24 +64,23 @@ static void CheckList(const std::string& label, const std::vector<Entry>& entrie
 static void TestDataLists() {
     std::cout << "data lists:" << std::endl;
 
-    std::vector<Entry> bosses;
-    for (int i = 0; i < BOSS_COUNT; i++) {
-        bosses.push_back({ BOSS_LIST[i].name, BOSS_LIST[i].defeatedFlag, BOSS_LIST[i].section });
+    // Anything the loader complained about is a test failure - a data file
+    // typo should fail here rather than show up as a missing entry in game.
+    for (size_t i = 0; i < g_tracked.problems.size(); i++) {
+        Check(false, g_tracked.problems[i]);
     }
-    CheckList("bosses", bosses);
 
-    std::vector<Entry> bonfires;
-    for (int i = 0; i < BONFIRE_COUNT; i++) {
-        bonfires.push_back({ BONFIRE_LIST[i].name, BONFIRE_LIST[i].litFlag, BONFIRE_LIST[i].area });
-    }
-    CheckList("bonfires", bonfires);
+    CheckList("bosses", g_tracked.bosses);
+    CheckList("bonfires", g_tracked.bonfires);
 
     // A boss and a bonfire can share a name ("Iudex Gundyr" is both), but
     // never a flag - those mean different things.
     std::set<uint32_t> bossFlags;
-    for (int i = 0; i < BOSS_COUNT; i++) bossFlags.insert(BOSS_LIST[i].defeatedFlag);
-    for (int i = 0; i < BONFIRE_COUNT; i++) {
-        Check(bossFlags.count(BONFIRE_LIST[i].litFlag) == 0,
+    for (size_t i = 0; i < g_tracked.bosses.size(); i++) {
+        bossFlags.insert(g_tracked.bosses[i].flag);
+    }
+    for (size_t i = 0; i < g_tracked.bonfires.size(); i++) {
+        Check(bossFlags.count(g_tracked.bonfires[i].flag) == 0,
               "a bonfire reuses a boss flag");
     }
 }
@@ -118,12 +115,12 @@ static void TestBatchSafety() {
           "the batch limit is not actually the boundary");
 
     // Both real lists must be handled in one pass.
-    Check((size_t)BOSS_COUNT <= perBatch, "bosses no longer fit in one pass");
-    Check((size_t)BONFIRE_COUNT <= perBatch, "bonfires no longer fit in one pass");
+    Check(g_tracked.bosses.size() <= perBatch, "bosses no longer fit in one pass");
+    Check(g_tracked.bonfires.size() <= perBatch, "bonfires no longer fit in one pass");
 
     // Lists too big for the buffer must split, not overflow.
     size_t small = FlagsPerBatch(1024);
-    Check(small > 0 && small < (size_t)BONFIRE_COUNT, "a small buffer should force splitting");
+    Check(small > 0 && small < g_tracked.bonfires.size(), "a small buffer should force splitting");
     Check(BatchCodeSize(small) + BATCH_GAP + small <= 1024, "split batch overflows its buffer");
 
     // Buffers too small to work with must refuse rather than try.
@@ -131,7 +128,7 @@ static void TestBatchSafety() {
     Check(FlagsPerBatch(8) == 0, "tiny buffer must yield nothing");
 
     std::cout << "  " << perBatch << " flags fit per 4096-byte pass; "
-              << BOSS_COUNT << " bosses and " << BONFIRE_COUNT
+              << g_tracked.bosses.size() << " bosses and " << g_tracked.bonfires.size()
               << " bonfires each need one pass" << std::endl;
 }
 
@@ -182,8 +179,8 @@ static void TestColumnLayout() {
     }
 
     // The real combined list must fit, placed at its real position.
-    int bossLines = 2 + BOSS_COUNT + 3;          // souls + summary + bosses + section headers
-    int bonfireLines = 1 + BONFIRE_COUNT + 14;   // summary + bonfires + area headers
+    int bossLines = 2 + (int)g_tracked.bosses.size() + 3;          // souls + summary + bosses + section headers
+    int bonfireLines = 1 + (int)g_tracked.bonfires.size() + 14;   // summary + bonfires + area headers
     int total = bossLines + bonfireLines;
     ColumnLayout real = PlanColumns(total, LINE_HEIGHT, PADDING, BUDGET, MAX_COLUMNS);
     Check(real.droppedLines == 0, "the real list should fit without dropping anything");
@@ -203,8 +200,8 @@ static void TestDataFileParsing() {
 
     // The real files must load cleanly and match the lists the code expects.
     struct { const wchar_t* file; int expected; const char* label; } files[] = {
-        { L"bosses.txt",   BOSS_COUNT,    "bosses.txt" },
-        { L"bonfires.txt", BONFIRE_COUNT, "bonfires.txt" },
+        { L"bosses.txt",   (int)g_tracked.bosses.size(),   "bosses.txt" },
+        { L"bonfires.txt", (int)g_tracked.bonfires.size(), "bonfires.txt" },
     };
     for (auto& f : files) {
         LoadedList loaded = LoadTrackedList(f.file);
@@ -229,6 +226,7 @@ static void TestDataFileParsing() {
 }
 
 int main() {
+    LoadTrackedLists();
     TestDataLists();
     TestDataFileParsing();
     TestBatchSafety();

@@ -12,11 +12,12 @@
 #include "ds3reader.h"
 #include "settings.h"
 #include "layout.h"
+#include "tracked.h"
 
 Ds3Connection g_conn;
 bool g_connected = false;
-bool g_bossDefeated[BOSS_COUNT] = {};
-bool g_bonfireLit[BONFIRE_COUNT] = {};
+std::vector<char> g_bossDefeated;
+std::vector<char> g_bonfireLit;
 uint32_t g_souls = 0;
 bool g_soulsAvailable = false;
 
@@ -116,24 +117,20 @@ int MeasureRequiredWidth() {
     const std::wstring widestSuffix = L"  00/00";
 
     int widest = 0;
-    const wchar_t* lastSection = nullptr;
-    for (int i = 0; i < BOSS_COUNT; i++) {
-        if (lastSection == nullptr || wcscmp(lastSection, BOSS_LIST[i].section) != 0) {
-            lastSection = BOSS_LIST[i].section;
-            std::wstring header = std::wstring(lastSection) + widestSuffix;
-            widest = std::max(widest, MeasureLineWidth(measureDC, header.c_str(), PAD_LEFT));
+    const std::vector<TrackedEntry>* allLists[] = { &g_tracked.bosses, &g_tracked.bonfires };
+    for (auto* list : allLists) {
+        std::wstring lastGroup;
+        bool haveGroup = false;
+        for (size_t i = 0; i < list->size(); i++) {
+            const TrackedEntry& entry = (*list)[i];
+            if (!haveGroup || entry.group != lastGroup) {
+                lastGroup = entry.group;
+                haveGroup = true;
+                std::wstring header = lastGroup + widestSuffix;
+                widest = std::max(widest, MeasureLineWidth(measureDC, header.c_str(), PAD_LEFT));
+            }
+            widest = std::max(widest, MeasureLineWidth(measureDC, entry.name.c_str(), BOSS_INDENT));
         }
-        widest = std::max(widest, MeasureLineWidth(measureDC, BOSS_LIST[i].name, BOSS_INDENT));
-    }
-
-    const wchar_t* lastArea = nullptr;
-    for (int i = 0; i < BONFIRE_COUNT; i++) {
-        if (lastArea == nullptr || wcscmp(lastArea, BONFIRE_LIST[i].area) != 0) {
-            lastArea = BONFIRE_LIST[i].area;
-            std::wstring header = std::wstring(lastArea) + widestSuffix;
-            widest = std::max(widest, MeasureLineWidth(measureDC, header.c_str(), PAD_LEFT));
-        }
-        widest = std::max(widest, MeasureLineWidth(measureDC, BONFIRE_LIST[i].name, BOSS_INDENT));
     }
 
     // The status lines can be wider than any name, so measure them too. Use
@@ -178,31 +175,33 @@ const COLORREF COLOR_WAITING = RGB(255, 255, 0);
 // each time the group changes. Each header carries that group's progress, so
 // "which area am I still missing something in" is answerable at a glance
 // instead of by counting down the list.
-template <typename T, typename NameFn, typename GroupFn>
-void AppendGroupedLines(std::vector<OverlayLine>& lines, const T* list, int count,
-                        const bool* done, NameFn nameOf, GroupFn groupOf) {
-    int i = 0;
-    while (i < count) {
-        const wchar_t* group = groupOf(list[i]);
+void AppendGroupedLines(std::vector<OverlayLine>& lines,
+                        const std::vector<TrackedEntry>& list,
+                        const std::vector<char>& done) {
+    size_t i = 0;
+    while (i < list.size()) {
+        const std::wstring& group = list[i].group;
 
         // Look ahead over this group to total it up before writing the
         // header, since the header shows the group's own progress.
-        int groupSize = 0;
+        size_t groupSize = 0;
         int groupDone = 0;
-        for (int j = i; j < count && wcscmp(groupOf(list[j]), group) == 0; j++) {
+        for (size_t j = i; j < list.size() && list[j].group == group; j++) {
             groupSize++;
-            if (done[j]) {
+            if (j < done.size() && done[j]) {
                 groupDone++;
             }
         }
 
-        std::wstring header = std::wstring(group) + L"  " + std::to_wstring(groupDone)
+        std::wstring header = group + L"  " + std::to_wstring(groupDone)
                             + L"/" + std::to_wstring(groupSize);
         // A finished group is worth spotting immediately.
-        lines.push_back({ header, (groupDone == groupSize) ? COLOR_DONE : COLOR_HEADER, PAD_LEFT });
+        lines.push_back({ header, (groupDone == (int)groupSize) ? COLOR_DONE : COLOR_HEADER, PAD_LEFT });
 
-        for (int j = 0; j < groupSize; j++) {
-            lines.push_back({ nameOf(list[i + j]), done[i + j] ? COLOR_DONE : COLOR_NOT_DONE, BOSS_INDENT });
+        for (size_t j = 0; j < groupSize; j++) {
+            size_t index = i + j;
+            bool isDone = index < done.size() && done[index];
+            lines.push_back({ list[index].name, isDone ? COLOR_DONE : COLOR_NOT_DONE, BOSS_INDENT });
         }
         i += groupSize;
     }
@@ -223,14 +222,17 @@ std::vector<OverlayLine> BuildOverlayLines() {
         return lines;
     }
 
+    int bossCount = (int)g_tracked.bosses.size();
+    int bonfireCount = (int)g_tracked.bonfires.size();
+
     int defeatedCount = 0;
-    for (int i = 0; i < BOSS_COUNT; i++) {
+    for (size_t i = 0; i < g_bossDefeated.size(); i++) {
         if (g_bossDefeated[i]) {
             defeatedCount++;
         }
     }
     int litCount = 0;
-    for (int i = 0; i < BONFIRE_COUNT; i++) {
+    for (size_t i = 0; i < g_bonfireLit.size(); i++) {
         if (g_bonfireLit[i]) {
             litCount++;
         }
@@ -243,11 +245,11 @@ std::vector<OverlayLine> BuildOverlayLines() {
     int totalTracked = 0;
     int totalDone = 0;
     if (g_settings.showBosses) {
-        totalTracked += BOSS_COUNT;
+        totalTracked += bossCount;
         totalDone += defeatedCount;
     }
     if (g_settings.showBonfires) {
-        totalTracked += BONFIRE_COUNT;
+        totalTracked += bonfireCount;
         totalDone += litCount;
     }
     if (totalTracked > 0) {
@@ -263,19 +265,15 @@ std::vector<OverlayLine> BuildOverlayLines() {
     }
 
     if (g_settings.showBosses) {
-        lines.push_back({ L"Bosses Defeated: " + std::to_wstring(defeatedCount) + L" / " + std::to_wstring(BOSS_COUNT),
+        lines.push_back({ L"Bosses Defeated: " + std::to_wstring(defeatedCount) + L" / " + std::to_wstring(bossCount),
                           COLOR_SUMMARY, PAD_LEFT });
-        AppendGroupedLines(lines, BOSS_LIST, BOSS_COUNT, g_bossDefeated,
-                           [](const BossInfo& b) { return b.name; },
-                           [](const BossInfo& b) { return b.section; });
+        AppendGroupedLines(lines, g_tracked.bosses, g_bossDefeated);
     }
 
     if (g_settings.showBonfires) {
-        lines.push_back({ L"Bonfires Lit: " + std::to_wstring(litCount) + L" / " + std::to_wstring(BONFIRE_COUNT),
+        lines.push_back({ L"Bonfires Lit: " + std::to_wstring(litCount) + L" / " + std::to_wstring(bonfireCount),
                           COLOR_SUMMARY, PAD_LEFT });
-        AppendGroupedLines(lines, BONFIRE_LIST, BONFIRE_COUNT, g_bonfireLit,
-                           [](const BonfireInfo& b) { return b.name; },
-                           [](const BonfireInfo& b) { return b.area; });
+        AppendGroupedLines(lines, g_tracked.bonfires, g_bonfireLit);
     }
 
     // With everything switched off there'd be nothing to draw and the window
@@ -290,11 +288,13 @@ std::vector<OverlayLine> BuildOverlayLines() {
 // Stands in for the game when running with --demo: marks roughly the first
 // half of each list as done so the layout can be seen at a realistic size.
 void FillDemoData() {
-    for (int i = 0; i < BOSS_COUNT; i++) {
-        g_bossDefeated[i] = (i < BOSS_COUNT / 2);
+    g_bossDefeated.assign(g_tracked.bosses.size(), 0);
+    for (size_t i = 0; i < g_bossDefeated.size(); i++) {
+        g_bossDefeated[i] = (i < g_bossDefeated.size() / 2) ? 1 : 0;
     }
-    for (int i = 0; i < BONFIRE_COUNT; i++) {
-        g_bonfireLit[i] = (i < BONFIRE_COUNT / 2);
+    g_bonfireLit.assign(g_tracked.bonfires.size(), 0);
+    for (size_t i = 0; i < g_bonfireLit.size(); i++) {
+        g_bonfireLit[i] = (i < g_bonfireLit.size() / 2) ? 1 : 0;
     }
     g_souls = 123456;
     g_soulsAvailable = true;
@@ -514,14 +514,24 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 }
             }
             if (g_connected) {
-                std::vector<uint8_t> bossFlags = ReadAllBossFlags(g_conn);
-                for (int i = 0; i < BOSS_COUNT; i++) {
-                    g_bossDefeated[i] = bossFlags[i];
+                // Both lists go out in one batch so the game is interrupted
+                // once per tick rather than once per list.
+                std::vector<uint32_t> flagIds = FlagsOf(g_tracked.bosses);
+                std::vector<uint32_t> bonfireIds = FlagsOf(g_tracked.bonfires);
+                flagIds.insert(flagIds.end(), bonfireIds.begin(), bonfireIds.end());
+
+                std::vector<uint8_t> flags = ReadFlags(g_conn, flagIds);
+
+                size_t bossCount = g_tracked.bosses.size();
+                g_bossDefeated.assign(bossCount, 0);
+                for (size_t i = 0; i < bossCount && i < flags.size(); i++) {
+                    g_bossDefeated[i] = flags[i] ? 1 : 0;
                 }
-                std::vector<uint8_t> bonfireFlags = ReadAllBonfireFlags(g_conn);
-                for (int i = 0; i < BONFIRE_COUNT; i++) {
-                    g_bonfireLit[i] = bonfireFlags[i];
+                g_bonfireLit.assign(g_tracked.bonfires.size(), 0);
+                for (size_t i = 0; i < g_bonfireLit.size() && bossCount + i < flags.size(); i++) {
+                    g_bonfireLit[i] = flags[bossCount + i] ? 1 : 0;
                 }
+
                 g_soulsAvailable = ReadSouls(g_conn, g_souls);
             }
             if (g_visible) {
@@ -535,6 +545,19 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow) {
     const wchar_t CLASS_NAME[] = L"DS3OverlayWindowClass";
+
+    // Data first - everything else is sized from what's in the lists.
+    LoadTrackedLists();
+    if (g_tracked.AnyProblems()) {
+        // Bad data would otherwise show up as silently missing entries, so
+        // say so plainly and let the user fix the file.
+        std::string message = "Problems in the data files:\n\n";
+        for (size_t i = 0; i < g_tracked.problems.size() && i < 20; i++) {
+            message += "  " + g_tracked.problems[i] + "\n";
+        }
+        message += "\nThe overlay will run with whatever loaded correctly.";
+        MessageBoxA(nullptr, message.c_str(), "DS3 Overlay", MB_OK | MB_ICONWARNING);
+    }
 
     if (lpCmdLine != nullptr && strstr(lpCmdLine, "--demo") != nullptr) {
         g_demoMode = true;
