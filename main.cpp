@@ -26,7 +26,74 @@ int PrintGroupedList(const std::vector<TrackedEntry>& list, const std::vector<ui
     return doneCount;
 }
 
-int main() {
+// Polls every tracked flag and reports the moment one changes.
+//
+// This exists because the questline flag ids came from a single source and
+// have never been checked against a real save. Rather than guessing whether
+// an id is right, run this, do the thing in game, and see which entry fires -
+// or see nothing fire, which means the id is wrong.
+int RunWatch(Ds3Connection& conn) {
+    struct Watched {
+        const std::vector<TrackedEntry>* list;
+        const char* label;
+    };
+    const Watched watched[] = {
+        { &g_tracked.bosses,   "boss"    },
+        { &g_tracked.bonfires, "bonfire" },
+        { &g_tracked.quests,   "quest"   },
+    };
+
+    // One flat list, so everything is read in a single pass per tick.
+    std::vector<uint32_t> flagIds;
+    std::vector<std::wstring> labels;
+    for (const Watched& w : watched) {
+        for (size_t i = 0; i < w.list->size(); i++) {
+            flagIds.push_back((*w.list)[i].flag);
+            labels.push_back(L"[" + Widen(w.label) + L"] " + (*w.list)[i].group
+                             + L" / " + (*w.list)[i].name);
+        }
+    }
+
+    std::cout << "Watching " << flagIds.size()
+              << " flags. Do something in game and it will show up here." << std::endl;
+    std::cout << "Press Ctrl+C to stop." << std::endl << std::endl;
+
+    std::vector<uint8_t> previous = ReadFlags(conn, flagIds);
+    for (size_t i = 0; i < previous.size(); i++) {
+        if (previous[i]) {
+            std::wcout << L"  already set: " << labels[i] << std::endl;
+        }
+    }
+    std::cout << "\n--- watching for changes ---" << std::endl;
+
+    while (true) {
+        Sleep(500);
+
+        DWORD exitCode = 0;
+        if (!GetExitCodeProcess(conn.process, &exitCode) || exitCode != STILL_ACTIVE) {
+            std::cout << "Game closed." << std::endl;
+            return 0;
+        }
+
+        std::vector<uint8_t> current = ReadFlags(conn, flagIds);
+        for (size_t i = 0; i < current.size() && i < previous.size(); i++) {
+            if (current[i] != previous[i]) {
+                std::wcout << (current[i] ? L"  SET   " : L"  UNSET ")
+                           << flagIds[i] << L"  " << labels[i] << std::endl;
+            }
+        }
+        previous = current;
+    }
+}
+
+int main(int argc, char** argv) {
+    bool watchMode = false;
+    for (int i = 1; i < argc; i++) {
+        if (std::string(argv[i]) == "--watch") {
+            watchMode = true;
+        }
+    }
+
     LoadTrackedLists();
     if (g_tracked.AnyProblems()) {
         std::cout << "Problems in the data files:" << std::endl;
@@ -47,6 +114,13 @@ int main() {
         std::cout << " (no offsets for this version - souls unavailable)";
     }
     std::cout << std::endl;
+
+    if (watchMode) {
+        int result = RunWatch(conn);
+        VirtualFreeEx(conn.process, conn.remoteBuffer, 0, MEM_RELEASE);
+        CloseHandle(conn.process);
+        return result;
+    }
 
     uint32_t souls = 0;
     if (ReadSouls(conn, souls)) {
