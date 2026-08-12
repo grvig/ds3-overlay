@@ -1,0 +1,94 @@
+# Questline reward items ("quest lots") for Dark Souls III.
+# Format: Item | event flag id | NPC
+#
+# The flag says whether that reward has been handed over, which makes these a
+# reliable stand-in for how far a questline has actually progressed - getting
+# Siegward's Storm Ruler means you reached the Yhorm stage with him alive.
+#
+# Source: the Souls Modding Wiki DS3 event flag list.
+#
+# WARNING: unlike bosses.txt and bonfires.txt, these ids come from a SINGLE
+# source and have NOT been checked against a real save yet. Treat them as
+# provisional - if an entry never lights up in game, suspect the id here
+# before suspecting the code.
+#
+Eyes of a Fire Keeper                      | 50006020 | Fire Keeper
+Anri's Straight Sword                      | 50006030 | Anri of Astora
+Ring of the Evil Eye                       | 50006190 | Anri of Astora
+Dark Sigil                                 | 50006193 | Anri of Astora
+Skull Ring                                 | 50006031 | Ludleth of Courland
+Morion Blade                               | 50006040 | Yuria of Londor
+Darkdrift (Lord of Hollow)                 | 50006041 | Yuria of Londor
+Yuria's Set (Lord of Hollow)               | 50006042 | Yuria of Londor
+Yuyia's Ashes                              | 50006043 | Yuria of Londor
+Yorshka's Chime                            | 50006060 | Company Captain Yorshka
+Heavy Gem                                  | 50006070 | Hawkwood the Deserter
+Twinkling Dragon Torso Stone               | 50006072 | Hawkwood the Deserter
+Farron Ring                                | 50006073 | Hawkwood the Deserter
+Hawkwood Shield                            | 50006074 | Hawkwood the Deserter
+Twinkling Dragon Torso Stone               | 50006071 | Archdragon Peak Altar
+Silvercat Ring & Blessed Mail Breaker      | 50006080 | Sirris of the Sunless Realms
+Sunset Shield                              | 50006081 | Sirris of the Sunless Realms
+Sunless Talisman                           | 50006082 | Sirris of the Sunless Realms
+Sunset Set                                 | 50006083 | Sirris of the Sunless Realms
+Red Eye Orb                                | 50006090 | Ringfinger Leonhard
+Silver Mask                                | 50006091 | Ringfinger Leonhard
+Black Eye Orb                              | 50006092 | Ringfinger Leonhard
+Soul of Rosaria & Crescent Moon Sword & Silver Mask | 50006093 | Ringfinger Leonhard
+Hawkwood's Swordgrass                      | 50006100 | Andre
+Princess Ring                              | 50006110 | Shrine Handmaid
+Blue Tearstone Ring                        | 50006120 | Greirat
+Greirat's Ashes                            | 50006121 | Greirat
+Young Dragon Ring                          | 50006130 | Orbeck of Vinheim
+Slumbering Dragoncrest Ring                | 50006131 | Orbeck of Vinheim
+Orbeck's Ashes                             | 50006132 | Orbeck of Vinheim
+Pyromancy Flame                            | 50006140 | Cornyx of the Great Swamp
+Cornyx's Set                               | 50006141 | Cornyx of the Great Swamp
+Cornyx's Ashes                             | 50006142 | Cornyx of the Great Swamp
+Karla's Set                                | 50006150 | Karla
+Karla's Ashes                              | 50006151 | Karla
+Tower Key                                  | 50006160 | Irina of Carim
+Saint's Talisman                           | 50006161 | Irina of Carim
+Deep Braille Divine Tome                   | 50006162 | Irina of Carim
+Londor Braille Divine Tome                 | 50006163 | Irina of Carim
+Irina's Ashes                              | 50006164 | Irina of Carim
+Morne's Great Hammer & Moaning Shield      | 50006170 | Eygon of Carim
+Rusted Coin                                | 50006200 | Unbreakable Patches
+Rusted Gold Coin                           | 50006201 | Unbreakable Patches
+Winged Spear & Horsehoof Ring              | 50006202 | Unbreakable Patches
+Patches' Ashes                             | 50006203 | Unbreakable Patches
+Catarina Helm                              | 73501010 | Unbreakable Patches
+Catarina Armor                             | 73501020 | Unbreakable Patches
+Catarina Gauntlets                         | 73501030 | Unbreakable Patches
+Catarina Leggings                          | 73501040 | Unbreakable Patches
+Pierce Shield                              | 73501050 | Unbreakable Patches
+Siegbrau (1)                               | 50006210 | Siegward of Catarina
+Siegbrau (2)                               | 50006211 | Siegward of Catarina
+Siegbrau (3)                               | 50006212 | Siegward of Catarina
+Kukri                                      | 50006213 | Siegward of Catarina
+Emit Force                                 | 50006214 | Siegward of Catarina
+Titanite Slab                              | 50006215 | Siegward of Catarina
+Storm Ruler                                | 50006216 | Siegward of Catarina
+Catarina Set                               | 50006217 | Siegward of Catarina
+Storm Ruler & Pierce Shield                | 50006218 | Siegward of Catarina
+Basin of Vows                              | 50006230 | High Priestess Emma
+Small Lothric Banner                       | 50006232 | High Priestess Emma
+Young White Branch                         | 50006250 | Tower Giant
+Hawk Ring                                  | 50006251 | Tower Giant
+Llewellyn Shield                           | 50006260 | Horace the Hushed
+Chameleon                                  | 50006300 | Londor Pilgrim
+Sword of Avowal                            | 50006301 | Londor Pilgrim
+Homeward Bone                              | 50006311 | Drowsy Forlorn
+Contraption Key                            | 50006520 | Sir Vilhelm
+Onyx Blade                                 | 50006521 | Sir Vilhelm
+Titanite Slab                              | 50006540 | Forlorn Corvian Settler
+Chillbite Ring                             | 50006550 | Sister Friede
+Siegbrau (1)                               | 50006620 | Amnesiac Lapp
+Titanite Slab                              | 50006621 | Amnesiac Lapp
+Siegbrau (2)                               | 50006622 | Amnesiac Lapp
+Champion's Bones                           | 50006623 | Amnesiac Lapp
+Lapp's Set                                 | 50006624 | Amnesiac Lapp
+Sacred Chime of Filianore                  | 50006630 | Shira, Knight of Filianore
+Titanite Slab                              | 50006631 | Shira, Knight of Filianore
+Crucifix of the Mad King                   | 50006632 | Shira, Knight of Filianore
+Old Woman's Ashes                          | 50006660 | Stone-humped Hag

@@ -36,9 +36,16 @@ static void CheckList(const std::string& label, const std::vector<TrackedEntry>&
               label + ": duplicate flag " + std::to_string(entries[i].flag));
         Check(!entries[i].name.empty(), label + ": empty name at " + std::to_string(i));
         Check(!entries[i].group.empty(), label + ": empty group at " + std::to_string(i));
-        // DS3 event flags for bosses and bonfires are 8-digit ids.
-        Check(entries[i].flag >= 13000000 && entries[i].flag <= 15999999,
-              label + ": flag out of range at " + std::to_string(i));
+        // DS3 groups its event flags into bands. Bosses and bonfires live in
+        // 13-15 million, questline reward lots in 50 million, and a handful
+        // of NPC shop lots (Patches' Catarina set) in 73 million. Anything
+        // outside all three is a typo rather than a real flag.
+        uint32_t flag = entries[i].flag;
+        bool worldFlag = flag >= 13000000 && flag <= 15999999;
+        bool questLot  = flag >= 50000000 && flag <= 50999999;
+        bool shopLot   = flag >= 73000000 && flag <= 73999999;
+        Check(worldFlag || questLot || shopLot,
+              label + ": flag " + std::to_string(flag) + " out of range at " + std::to_string(i));
     }
 
     // The overlay prints a header whenever the group changes, so a group that
@@ -72,16 +79,19 @@ static void TestDataLists() {
 
     CheckList("bosses", g_tracked.bosses);
     CheckList("bonfires", g_tracked.bonfires);
+    CheckList("quests", g_tracked.quests);
 
-    // A boss and a bonfire can share a name ("Iudex Gundyr" is both), but
-    // never a flag - those mean different things.
-    std::set<uint32_t> bossFlags;
-    for (size_t i = 0; i < g_tracked.bosses.size(); i++) {
-        bossFlags.insert(g_tracked.bosses[i].flag);
-    }
-    for (size_t i = 0; i < g_tracked.bonfires.size(); i++) {
-        Check(bossFlags.count(g_tracked.bonfires[i].flag) == 0,
-              "a bonfire reuses a boss flag");
+    // Entries can share a name across lists ("Iudex Gundyr" is both a boss
+    // and a bonfire) but never a flag - those mean different things.
+    std::set<uint32_t> seen;
+    const std::vector<TrackedEntry>* lists[] = {
+        &g_tracked.bosses, &g_tracked.bonfires, &g_tracked.quests
+    };
+    for (auto* list : lists) {
+        for (size_t i = 0; i < list->size(); i++) {
+            Check(seen.insert((*list)[i].flag).second,
+                  "flag " + std::to_string((*list)[i].flag) + " is used by more than one list");
+        }
     }
 }
 
@@ -202,6 +212,7 @@ static void TestDataFileParsing() {
     struct { const wchar_t* file; int expected; const char* label; } files[] = {
         { L"bosses.txt",   (int)g_tracked.bosses.size(),   "bosses.txt" },
         { L"bonfires.txt", (int)g_tracked.bonfires.size(), "bonfires.txt" },
+        { L"quests.txt",   (int)g_tracked.quests.size(),   "quests.txt" },
     };
     for (auto& f : files) {
         LoadedList loaded = LoadTrackedList(f.file);

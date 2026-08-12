@@ -15,6 +15,10 @@ struct TrackedLists {
     std::vector<TrackedEntry> bosses;
     std::vector<TrackedEntry> bonfires;
 
+    // Questline reward items. Whether a reward has been handed over is a
+    // usable stand-in for how far that NPC's questline actually got.
+    std::vector<TrackedEntry> quests;
+
     // Anything wrong with the data files, with file and line, so a bad entry
     // can be found instead of quietly going missing.
     std::vector<std::string> problems;
@@ -40,6 +44,7 @@ inline void LoadTrackedLists() {
     g_tracked = TrackedLists();
     LoadOneInto(g_tracked, g_tracked.bosses, L"bosses.txt", "bosses.txt");
     LoadOneInto(g_tracked, g_tracked.bonfires, L"bonfires.txt", "bonfires.txt");
+    LoadOneInto(g_tracked, g_tracked.quests, L"quests.txt", "quests.txt");
 }
 
 // Pulls just the flag ids out of a list, for handing to the batch reader.
