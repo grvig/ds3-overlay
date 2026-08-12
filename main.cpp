@@ -1,6 +1,7 @@
 #include "ds3reader.h"
 #include "tracked.h"
 #include <iostream>
+#include <map>
 
 // Prints one line per entry, with a header whenever the group changes, and
 // returns how many were done. Mirrors how the overlay lays things out.
@@ -62,14 +63,45 @@ int main() {
     std::vector<uint8_t> bonfireFlags = ReadFlags(conn, FlagsOf(g_tracked.bonfires));
     int bonfiresLit = PrintGroupedList(g_tracked.bonfires, bonfireFlags, L"lit", L"not lit");
 
+    std::cout << "\n=== QUEST REWARDS ===" << std::endl;
+    std::vector<uint8_t> questFlags = ReadFlags(conn, FlagsOf(g_tracked.quests));
+    int questsDone = PrintGroupedList(g_tracked.quests, questFlags, L"received", L"not received");
+
+    // Work out what's already been lost, from everything read above.
+    std::map<uint32_t, bool> flagState;
+    for (size_t i = 0; i < g_tracked.bosses.size() && i < bossFlags.size(); i++) {
+        flagState[g_tracked.bosses[i].flag] = bossFlags[i] != 0;
+    }
+    for (size_t i = 0; i < g_tracked.bonfires.size() && i < bonfireFlags.size(); i++) {
+        flagState[g_tracked.bonfires[i].flag] = bonfireFlags[i] != 0;
+    }
+    for (size_t i = 0; i < g_tracked.quests.size() && i < questFlags.size(); i++) {
+        flagState[g_tracked.quests[i].flag] = questFlags[i] != 0;
+    }
+
+    std::vector<MissedThing> missed = FindMissed(g_tracked.missableRules, flagState);
+    std::cout << "\n=== MISSED (no longer obtainable) ===" << std::endl;
+    if (missed.empty()) {
+        std::cout << "  nothing missed - every tracked questline reward is still available"
+                  << std::endl;
+    } else {
+        for (size_t i = 0; i < missed.size(); i++) {
+            std::wcout << L"  " << missed[i].Describe() << std::endl;
+        }
+    }
+    std::cout << "  (" << g_tracked.missableRules.size() << " rules checked; these are"
+              << " provisional - see data/missable.txt)" << std::endl;
+
     int bossCount = (int)g_tracked.bosses.size();
     int bonfireCount = (int)g_tracked.bonfires.size();
+    int questCount = (int)g_tracked.quests.size();
     int totalTracked = bossCount + bonfireCount;
     int totalDone = bossesDefeated + bonfiresLit;
 
     std::cout << "\n=== TOTALS ===" << std::endl;
     std::cout << "Bosses defeated: " << bossesDefeated << " / " << bossCount << std::endl;
     std::cout << "Bonfires lit:    " << bonfiresLit << " / " << bonfireCount << std::endl;
+    std::cout << "Quest rewards:   " << questsDone << " / " << questCount << std::endl;
     if (totalTracked > 0) {
         std::cout << "Completion:      " << (totalDone * 100 / totalTracked) << "%  ("
                   << totalDone << "/" << totalTracked << ")" << std::endl;
