@@ -9,6 +9,7 @@
 #include "ds3reader.h"
 #include "bonfires.h"
 #include "layout.h"
+#include "datafile.h"
 
 #include <iostream>
 #include <set>
@@ -194,8 +195,42 @@ static void TestColumnLayout() {
               << (SCREEN_MARGIN + realHeight) << " on a " << SCREEN << "px screen)" << std::endl;
 }
 
+// The loader has to be forgiving about whitespace and comments, and loud
+// about anything it can't make sense of - a typo in a data file should be
+// findable rather than silently dropping an entry.
+static void TestDataFileParsing() {
+    std::cout << "data file loading:" << std::endl;
+
+    // The real files must load cleanly and match the lists the code expects.
+    struct { const wchar_t* file; int expected; const char* label; } files[] = {
+        { L"bosses.txt",   BOSS_COUNT,    "bosses.txt" },
+        { L"bonfires.txt", BONFIRE_COUNT, "bonfires.txt" },
+    };
+    for (auto& f : files) {
+        LoadedList loaded = LoadTrackedList(f.file);
+        Check(loaded.fileFound, std::string(f.label) + " not found");
+        for (size_t i = 0; i < loaded.problems.size(); i++) {
+            Check(false, std::string(f.label) + ": " + loaded.problems[i]);
+        }
+        Check((int)loaded.entries.size() == f.expected,
+              std::string(f.label) + ": expected " + std::to_string(f.expected) +
+              " entries, got " + std::to_string(loaded.entries.size()));
+        std::cout << "  " << f.label << ": " << loaded.entries.size()
+                  << " entries, " << loaded.problems.size() << " problems" << std::endl;
+    }
+
+    // Loading something that isn't there must report it, not crash or
+    // pretend the list is simply empty.
+    LoadedList missing = LoadTrackedList(L"definitely-not-a-real-file.txt");
+    Check(!missing.fileFound, "a missing file must be reported as missing");
+    Check(!missing.problems.empty(), "a missing file must produce a problem message");
+
+    std::cout << "  missing file reported rather than treated as empty" << std::endl;
+}
+
 int main() {
     TestDataLists();
+    TestDataFileParsing();
     TestBatchSafety();
     TestColumnLayout();
 

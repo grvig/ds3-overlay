@@ -1,0 +1,32 @@
+# Main bosses of Dark Souls III, base game and both DLCs.
+# Format: Name | event flag id | Group
+# The flag is the boss's "defeated" flag.
+# Entries in the same group must stay together - the overlay
+# writes a heading each time the group changes.
+# Source: The Grand Archives cheat table.
+#
+Iudex Gundyr                         | 14000800 | Base Game
+Vordt of the Boreal Valley           | 13000800 | Base Game
+Curse-Rotted Greatwood               | 13100800 | Base Game
+Crystal Sage                         | 13300850 | Base Game
+Deacons of the Deep                  | 13500800 | Base Game
+Abyss Watchers                       | 13300800 | Base Game
+High Lord Wolnir                     | 13800800 | Base Game
+Old Demon King                       | 13800830 | Base Game
+Yhorm the Giant                      | 13900800 | Base Game
+Pontiff Sulyvahn                     | 13700850 | Base Game
+Aldrich, Devourer of Gods            | 13700800 | Base Game
+Dancer of the Boreal Valley          | 13000890 | Base Game
+Oceiros, the Consumed King           | 13000830 | Base Game
+Champion Gundyr                      | 14000830 | Base Game
+Ancient Wyvern                       | 13200800 | Base Game
+Nameless King                        | 13200850 | Base Game
+Dragonslayer Armour                  | 13010800 | Base Game
+Twin Princes                         | 13410830 | Base Game
+Soul of Cinder                       | 14100800 | Base Game
+Champion's Gravetender               | 14500860 | Ashes of Ariandel
+Father Ariandel and Sister Friede    | 14500800 | Ashes of Ariandel
+Demon Prince                         | 15000800 | The Ringed City
+Halflight, Spear of the Church       | 15100800 | The Ringed City
+Darkeater Midir                      | 15100850 | The Ringed City
+Slave Knight Gael                    | 15110800 | The Ringed City

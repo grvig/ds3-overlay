@@ -1,0 +1,85 @@
+# Bonfires of Dark Souls III, base game and both DLCs.
+# Format: Name | event flag id | Group
+# The flag is the bonfire's "lit" flag.
+# Source: SoulSplitter, cross-checked against The Grand Archives
+# cheat table. Where they disagreed this follows SoulSplitter:
+# the cheat table reuses one flag for both Keep Ruins and Abyss
+# Watchers, and omits Farron Keep Perimeter entirely.
+#
+Firelink Shrine                      | 14000000 | Cemetery of Ash
+Cemetery of Ash                      | 14000001 | Cemetery of Ash
+Iudex Gundyr                         | 14000002 | Cemetery of Ash
+Untended Graves                      | 14000003 | Cemetery of Ash
+Champion Gundyr                      | 14000004 | Cemetery of Ash
+High Wall of Lothric                 | 13000009 | High Wall of Lothric
+Tower on the Wall                    | 13000005 | High Wall of Lothric
+Vordt of the Boreal Valley           | 13000002 | High Wall of Lothric
+Dancer of the Boreal Valley          | 13000004 | High Wall of Lothric
+Oceiros, the Consumed King           | 13000001 | High Wall of Lothric
+Foot of the High Wall                | 13100004 | Undead Settlement
+Undead Settlement                    | 13100000 | Undead Settlement
+Cliff Underside                      | 13100002 | Undead Settlement
+Dilapidated Bridge                   | 13100003 | Undead Settlement
+Pit of Hollows                       | 13100001 | Undead Settlement
+Road of Sacrifices                   | 13300006 | Road of Sacrifices
+Halfway Fortress                     | 13300000 | Road of Sacrifices
+Crucifixion Woods                    | 13300007 | Road of Sacrifices
+Crystal Sage                         | 13300002 | Road of Sacrifices
+Farron Keep                          | 13300003 | Road of Sacrifices
+Keep Ruins                           | 13300004 | Road of Sacrifices
+Farron Keep Perimeter                | 13300008 | Road of Sacrifices
+Old Wolf of Farron                   | 13300005 | Road of Sacrifices
+Abyss Watchers                       | 13300001 | Road of Sacrifices
+Cathedral of the Deep                | 13500003 | Cathedral of the Deep
+Cleansing Chapel                     | 13500000 | Cathedral of the Deep
+Rosaria's Bed Chamber                | 13500002 | Cathedral of the Deep
+Deacons of the Deep                  | 13500001 | Cathedral of the Deep
+Catacombs of Carthus                 | 13800006 | Catacombs of Carthus
+High Lord Wolnir                     | 13800000 | Catacombs of Carthus
+Abandoned Tomb                       | 13800001 | Catacombs of Carthus
+Old King's Antechamber               | 13800002 | Catacombs of Carthus
+Demon Ruins                          | 13800003 | Catacombs of Carthus
+Old Demon King                       | 13800004 | Catacombs of Carthus
+Irithyll of the Boreal Valley        | 13700007 | Irithyll of the Boreal Valley
+Central Irithyll                     | 13700004 | Irithyll of the Boreal Valley
+Church of Yorshka                    | 13700000 | Irithyll of the Boreal Valley
+Distant Manor                        | 13700005 | Irithyll of the Boreal Valley
+Pontiff Sulyvahn                     | 13700001 | Irithyll of the Boreal Valley
+Water Reserve                        | 13700006 | Irithyll of the Boreal Valley
+Anor Londo                           | 13700003 | Irithyll of the Boreal Valley
+Prison Tower                         | 13700008 | Irithyll of the Boreal Valley
+Aldrich, Devourer of Gods            | 13700002 | Irithyll of the Boreal Valley
+Irithyll Dungeon                     | 13900000 | Irithyll Dungeon
+Profaned Capital                     | 13900002 | Irithyll Dungeon
+Yhorm the Giant                      | 13900001 | Irithyll Dungeon
+Lothric Castle                       | 13010000 | Lothric Castle
+Dragon Barracks                      | 13010002 | Lothric Castle
+Dragonslayer Armour                  | 13010001 | Lothric Castle
+Grand Archives                       | 13410001 | Lothric Castle
+Twin Princes                         | 13410000 | Lothric Castle
+Archdragon Peak                      | 13200000 | Archdragon Peak
+Dragon-Kin Mausoleum                 | 13200003 | Archdragon Peak
+Great Belfry                         | 13200002 | Archdragon Peak
+Nameless King                        | 13200001 | Archdragon Peak
+Flameless Shrine                     | 14100000 | Kiln of the First Flame
+Kiln of the First Flame              | 14100001 | Kiln of the First Flame
+Snowfield                            | 14500001 | The Painted World of Ariandel
+Rope Bridge Cave                     | 14500002 | The Painted World of Ariandel
+Corvian Settlement                   | 14500003 | The Painted World of Ariandel
+Snowy Mountain Pass                  | 14500004 | The Painted World of Ariandel
+Ariandel Chapel                      | 14500005 | The Painted World of Ariandel
+Sister Friede                        | 14500000 | The Painted World of Ariandel
+Depths of the Painting               | 14500007 | The Painted World of Ariandel
+Champion's Gravetender               | 14500006 | The Painted World of Ariandel
+The Dreg Heap                        | 15000001 | The Dreg Heap
+Earthen Peak Ruins                   | 15000002 | The Dreg Heap
+Within the Earthen Peak Ruins        | 15000003 | The Dreg Heap
+The Demon Prince                     | 15000000 | The Dreg Heap
+Mausoleum Lookout                    | 15100002 | The Ringed City
+Ringed Inner Wall                    | 15100003 | The Ringed City
+Ringed City Streets                  | 15100004 | The Ringed City
+Shared Grave                         | 15100005 | The Ringed City
+Church of Filianore                  | 15100000 | The Ringed City
+Darkeater Midir                      | 15100001 | The Ringed City
+Filianore's Rest                     | 15110001 | The Ringed City
+Slave Knight Gael                    | 15110000 | The Ringed City
