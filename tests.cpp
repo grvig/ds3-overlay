@@ -10,6 +10,7 @@
 #include "tracked.h"
 #include "layout.h"
 #include "datafile.h"
+#include "missable.h"
 
 #include <iostream>
 #include <set>
@@ -236,9 +237,85 @@ static void TestDataFileParsing() {
     std::cout << "  missing file reported rather than treated as empty" << std::endl;
 }
 
+// The missable rules are the one place where being wrong is worse than being
+// absent: a false alarm gets the whole feature ignored, and a missed warning
+// wrongly reassures someone about a questline they've already broken.
+static void TestMissableRules() {
+    std::cout << "missable rules:" << std::endl;
+
+    LoadedRules loaded = LoadMissableRules(L"missable.txt");
+    Check(loaded.fileFound, "missable.txt not found");
+    for (size_t i = 0; i < loaded.problems.size(); i++) {
+        Check(false, "missable.txt: " + loaded.problems[i]);
+    }
+    Check(!loaded.rules.empty(), "missable.txt has no rules");
+
+    // Every flag a rule mentions must be a flag we actually track, or the
+    // rule can never fire and is silently dead.
+    std::set<uint32_t> known;
+    const std::vector<TrackedEntry>* lists[] = {
+        &g_tracked.bosses, &g_tracked.bonfires, &g_tracked.quests
+    };
+    for (auto* list : lists) {
+        for (size_t i = 0; i < list->size(); i++) {
+            known.insert((*list)[i].flag);
+        }
+    }
+    for (size_t i = 0; i < loaded.rules.size(); i++) {
+        const MissableRule& rule = loaded.rules[i];
+        Check(known.count(rule.rewardFlag) > 0,
+              "rule flag " + std::to_string(rule.rewardFlag) + " is not in any tracked list");
+        Check(known.count(rule.blockerFlag) > 0,
+              "closing flag " + std::to_string(rule.blockerFlag) + " is not in any tracked list");
+    }
+
+    // Behaviour, against a made-up rule so the check doesn't depend on the
+    // real data staying the same.
+    std::vector<MissableRule> rules;
+    MissableRule rule;
+    rule.reward = L"Test Reward";
+    rule.rewardFlag = 50000001;
+    rule.blockerFlag = 13000001;
+    rule.blockedBy = L"Test Boss";
+    rules.push_back(rule);
+
+    // Nothing has happened yet - no warning.
+    std::map<uint32_t, bool> state;
+    state[50000001] = false;
+    state[13000001] = false;
+    Check(FindMissed(rules, state).empty(), "warns before the closing event happened");
+
+    // Got the reward, then the event happened - still fine.
+    state[50000001] = true;
+    state[13000001] = true;
+    Check(FindMissed(rules, state).empty(), "warns even though the reward was collected");
+
+    // Event happened without the reward - this is the one case that warns.
+    state[50000001] = false;
+    state[13000001] = true;
+    std::vector<MissedThing> missed = FindMissed(rules, state);
+    Check(missed.size() == 1, "did not warn when the reward was genuinely lost");
+
+    // Reward collected, event not yet reached - no warning.
+    state[50000001] = true;
+    state[13000001] = false;
+    Check(FindMissed(rules, state).empty(), "warns when nothing has been lost");
+
+    // An unread flag must produce no opinion rather than a false alarm. This
+    // matters because a partial read would otherwise look like "not collected".
+    std::map<uint32_t, bool> partial;
+    partial[13000001] = true; // closing event known, reward flag never read
+    Check(FindMissed(rules, partial).empty(),
+          "invented a warning from a flag that was never read");
+
+    std::cout << "  " << loaded.rules.size()
+              << " rules loaded, all flags tracked, fires only on genuine loss" << std::endl;
+}
+
 int main() {
     LoadTrackedLists();
     TestDataLists();
+    TestMissableRules();
     TestDataFileParsing();
     TestBatchSafety();
     TestColumnLayout();

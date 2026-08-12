@@ -1,0 +1,36 @@
+# Things that become permanently unavailable once some event has happened.
+#
+# Format: What you lose | its flag | flag that closes it off | What closes it
+#
+# A rule fires when the closing flag is SET and the reward flag is NOT - that
+# means the window shut and you didn't get it. Nothing is guessed about what
+# you're "about to" do; this only reports what has already been lost.
+#
+# WARNING: PROVISIONAL. The reward flag ids come from a single source and have
+# not been checked against a real save. Worse, a wrong rule here is actively
+# harmful - it either cries wolf or quietly reassures you about a questline
+# you've already broken. Verify each of these in game before trusting them.
+#
+# --- Confident: these are long-standing, widely documented DS3 behaviour ---
+#
+# Siegward has to be freed and present for the Yhorm fight. Kill Yhorm without
+# him and the rest of his questline is gone.
+Storm Ruler from Siegward                  | 50006216 | 13900800 | Yhorm the Giant
+Siegward's Catarina Set                    | 50006217 | 13900800 | Yhorm the Giant
+#
+# Anri's questline resolves at Aldrich. Once Aldrich is dead the outcome is
+# already decided.
+Anri's Straight Sword                      | 50006030 | 13700800 | Aldrich, Devourer of Gods
+#
+# --- Safe by definition: the cycle is over once the final boss is dead ---
+#
+# Beating Soul of Cinder ends the playthrough, so any questline reward still
+# outstanding was missed on this cycle. These can't be wrong about the timing,
+# only about the reward flag id.
+Greirat's Ashes                            | 50006121 | 14100800 | Soul of Cinder
+Orbeck's Ashes                             | 50006132 | 14100800 | Soul of Cinder
+Cornyx's Ashes                             | 50006142 | 14100800 | Soul of Cinder
+Irina's Ashes                              | 50006164 | 14100800 | Soul of Cinder
+Yuria's Ashes                              | 50006043 | 14100800 | Soul of Cinder
+Sirris's Sunset Set                        | 50006083 | 14100800 | Soul of Cinder
+Leonhard's Crescent Moon Sword             | 50006093 | 14100800 | Soul of Cinder

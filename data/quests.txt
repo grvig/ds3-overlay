@@ -20,7 +20,7 @@ Skull Ring                                 | 50006031 | Ludleth of Courland
 Morion Blade                               | 50006040 | Yuria of Londor
 Darkdrift (Lord of Hollow)                 | 50006041 | Yuria of Londor
 Yuria's Set (Lord of Hollow)               | 50006042 | Yuria of Londor
-Yuyia's Ashes                              | 50006043 | Yuria of Londor
+Yuria's Ashes                              | 50006043 | Yuria of Londor
 Yorshka's Chime                            | 50006060 | Company Captain Yorshka
 Heavy Gem                                  | 50006070 | Hawkwood the Deserter
 Twinkling Dragon Torso Stone               | 50006072 | Hawkwood the Deserter
