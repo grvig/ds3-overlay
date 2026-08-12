@@ -8,9 +8,15 @@ Currently tracks:
 
 - Every main boss in the base game and both DLCs (25), marked green once defeated
 - Every bonfire in the base game and both DLCs (77), marked green once lit
+- Questline rewards for 30 NPCs (80 items)
+- **Questline rewards you can no longer get**, worked out from your actual save
 - Per-area progress on each heading, so a finished area is obvious at a glance
 - An overall completion percentage
 - Your live souls count
+
+The missed-item warnings are the point of the whole thing. A wiki can tell you
+Siegward's questline exists; it can't tell you that *your* save already lost it
+because you killed Yhorm without him.
 
 ## Requirements
 
@@ -37,9 +43,10 @@ That produces two programs:
 test.bat
 ```
 
-Checks the boss and bonfire lists are well-formed, and that the generated
-flag-reading code can never overwrite its own results area. Runs without the
-game open.
+Checks that the data files are well-formed, that every missable rule refers to
+a flag actually being tracked, that the rules fire only on genuine loss, and
+that the generated flag-reading code can never overwrite its own results area.
+Runs without the game open.
 
 ## Running
 
@@ -72,6 +79,61 @@ overlay.exe --demo
 Fills in made-up progress so the layout can be checked with the game closed.
 Demo mode never touches the game process.
 
+### Checking a flag id
+
+```
+main.exe --watch
+```
+
+Reports the moment any tracked flag changes. Do the thing in game and see which
+entry fires - or see nothing fire, which means that entry's flag id is wrong.
+This is how the questline data should be verified.
+
+## The tracked data
+
+The lists live in `data/` as plain text, one entry per line:
+
+```
+Name | flag id | Group
+```
+
+| File | Holds |
+| --- | --- |
+| `data/bosses.txt` | Boss "defeated" flags |
+| `data/bonfires.txt` | Bonfire "lit" flags |
+| `data/quests.txt` | Questline reward flags |
+| `data/missable.txt` | Rules for what closes off what |
+
+Blank lines and `#` comments are ignored, and anything malformed is reported
+with its line number rather than silently skipped. Editing these needs no
+rebuild, which is the point - the quest data especially will be wrong before
+it's right.
+
+`data/missable.txt` has four columns instead of three:
+
+```
+What you lose | its flag | flag that closes it | What closes it
+```
+
+A rule fires only when the closing flag is set and the reward flag isn't - that
+is, the window shut and you didn't get it. Nothing predicts what you're *about*
+to do. That's deliberate: a tool that cries wolf gets ignored, and one that
+wrongly reassures you costs a playthrough.
+
+### Confidence in the data
+
+| Data | Sources | Checked in game |
+| --- | --- | --- |
+| Bosses | Grand Archives cheat table | Yes |
+| Bonfires | SoulSplitter, cross-checked against the cheat table | No |
+| Questline rewards | Souls Modding Wiki only | **No** |
+| Missable rules | Hand-written | **No** |
+
+The questline flags come from a single source with nothing to cross-check
+against, unlike the bonfires - where having two sources is exactly what caught
+a wrong flag id. Treat them as provisional until `main.exe --watch` confirms
+them.
+
 ## Settings
 
 Read from `overlay-settings.txt`, kept next to `overlay.exe`:
@@ -92,6 +154,8 @@ showBonfires=true
 | `showSouls` | Show the souls counter |
 | `showBosses` | Show the boss list |
 | `showBonfires` | Show the bonfire list |
+| `showQuests` | Show the full questline reward list (off by default - it's long) |
+| `showMissable` | Show rewards you can no longer get (on by default) |
 
 Turning a section off shrinks the overlay to suit, which is the simplest way to
 make it less intrusive. `true/false`, `yes/no`, `on/off` and `1/0` all work.
@@ -144,9 +208,14 @@ Perimeter entirely.
 | File | What's in it |
 | --- | --- |
 | `overlay.cpp` | The overlay window: what to draw and where |
-| `main.cpp` | The console tool |
+| `main.cpp` | The console tool, including `--watch` |
 | `ds3reader.h` | Finding the game and reading its memory |
-| `bosses.h`, `bonfires.h` | Just the tracked lists and their flag ids |
+| `datafile.h` | Reading the `data/` files |
+| `tracked.h` | The loaded lists, in one place |
+| `missable.h` | Working out what can no longer be obtained |
 | `layout.h` | Working out columns, kept free of drawing code so it can be tested |
 | `settings.h` | Reading and writing the settings file |
 | `tests.cpp` | Checks that run without the game |
+
+`missable.h` and `layout.h` deliberately contain no Windows or game code, so
+the tests can drive the real logic rather than a copy of it.
