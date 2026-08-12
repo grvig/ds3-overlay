@@ -7,7 +7,9 @@
 #pragma once
 
 #include "datafile.h"
+#include "missable.h"
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -18,6 +20,9 @@ struct TrackedLists {
     // Questline reward items. Whether a reward has been handed over is a
     // usable stand-in for how far that NPC's questline actually got.
     std::vector<TrackedEntry> quests;
+
+    // Rules for spotting rewards that can no longer be obtained.
+    std::vector<MissableRule> missableRules;
 
     // Anything wrong with the data files, with file and line, so a bad entry
     // can be found instead of quietly going missing.
@@ -45,6 +50,12 @@ inline void LoadTrackedLists() {
     LoadOneInto(g_tracked, g_tracked.bosses, L"bosses.txt", "bosses.txt");
     LoadOneInto(g_tracked, g_tracked.bonfires, L"bonfires.txt", "bonfires.txt");
     LoadOneInto(g_tracked, g_tracked.quests, L"quests.txt", "quests.txt");
+
+    LoadedRules rules = LoadMissableRules(L"missable.txt");
+    g_tracked.missableRules = rules.rules;
+    for (size_t i = 0; i < rules.problems.size(); i++) {
+        g_tracked.problems.push_back("missable.txt: " + rules.problems[i]);
+    }
 }
 
 // Pulls just the flag ids out of a list, for handing to the batch reader.

@@ -25,6 +25,13 @@ struct OverlaySettings {
     bool showSouls = true;
     bool showBosses = true;
     bool showBonfires = true;
+
+    // The full quest reward list is long and mostly of interest when you're
+    // actively chasing one, so it's off unless asked for. The missed-items
+    // warnings are short and are the point of tracking quests at all, so
+    // those stay on.
+    bool showQuests = false;
+    bool showMissable = true;
 };
 
 // Settings live beside the executable rather than in the current working
@@ -129,6 +136,10 @@ OverlaySettings LoadSettings() {
             ApplyBoolSetting(value, settings.showBosses);
         } else if (key == "showBonfires") {
             ApplyBoolSetting(value, settings.showBonfires);
+        } else if (key == "showQuests") {
+            ApplyBoolSetting(value, settings.showQuests);
+        } else if (key == "showMissable") {
+            ApplyBoolSetting(value, settings.showMissable);
         }
     }
 
@@ -156,5 +167,7 @@ bool SaveSettings(const OverlaySettings& settings) {
     file << "showSouls=" << (settings.showSouls ? "true" : "false") << "\n";
     file << "showBosses=" << (settings.showBosses ? "true" : "false") << "\n";
     file << "showBonfires=" << (settings.showBonfires ? "true" : "false") << "\n";
+    file << "showQuests=" << (settings.showQuests ? "true" : "false") << "\n";
+    file << "showMissable=" << (settings.showMissable ? "true" : "false") << "\n";
     return file.good();
 }

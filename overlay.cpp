@@ -18,6 +18,11 @@ Ds3Connection g_conn;
 bool g_connected = false;
 std::vector<char> g_bossDefeated;
 std::vector<char> g_bonfireLit;
+std::vector<char> g_questDone;
+
+// Questline rewards that can no longer be obtained, worked out from the rules
+// in data/missable.txt.
+std::vector<MissedThing> g_missed;
 uint32_t g_souls = 0;
 bool g_soulsAvailable = false;
 
@@ -117,7 +122,19 @@ int MeasureRequiredWidth() {
     const std::wstring widestSuffix = L"  00/00";
 
     int widest = 0;
-    const std::vector<TrackedEntry>* allLists[] = { &g_tracked.bosses, &g_tracked.bonfires };
+
+    // Missed-item lines are built from two names joined together, so they can
+    // easily be the widest thing on screen.
+    for (size_t i = 0; i < g_tracked.missableRules.size(); i++) {
+        MissedThing thing;
+        thing.reward = g_tracked.missableRules[i].reward;
+        thing.blockedBy = g_tracked.missableRules[i].blockedBy;
+        widest = std::max(widest, MeasureLineWidth(measureDC, thing.Describe().c_str(), BOSS_INDENT));
+    }
+
+    const std::vector<TrackedEntry>* allLists[] = {
+        &g_tracked.bosses, &g_tracked.bonfires, &g_tracked.quests
+    };
     for (auto* list : allLists) {
         std::wstring lastGroup;
         bool haveGroup = false;
@@ -140,6 +157,8 @@ int MeasureRequiredWidth() {
     widest = std::max(widest, MeasureLineWidth(measureDC, L"Found game, connecting in 00s...", PAD_LEFT));
     widest = std::max(widest, MeasureLineWidth(measureDC, L"Bosses Defeated: 00 / 00", PAD_LEFT));
     widest = std::max(widest, MeasureLineWidth(measureDC, L"Bonfires Lit: 00 / 00", PAD_LEFT));
+    widest = std::max(widest, MeasureLineWidth(measureDC, L"Quest Rewards: 000 / 000", PAD_LEFT));
+    widest = std::max(widest, MeasureLineWidth(measureDC, L"Missed: 00", PAD_LEFT));
     widest = std::max(widest, MeasureLineWidth(measureDC, L"Completion: 100%  (000/000)", PAD_LEFT));
     widest = std::max(widest, MeasureLineWidth(measureDC, L"Souls: 9999999999", PAD_LEFT));
 
@@ -170,6 +189,7 @@ const COLORREF COLOR_DONE = RGB(0, 255, 0);
 const COLORREF COLOR_NOT_DONE = RGB(255, 255, 255);
 const COLORREF COLOR_SUMMARY = RGB(255, 255, 0);
 const COLORREF COLOR_WAITING = RGB(255, 255, 0);
+const COLORREF COLOR_MISSED = RGB(255, 80, 80);
 
 // Builds the lines for one grouped list (bosses, bonfires), adding a header
 // each time the group changes. Each header carries that group's progress, so
@@ -264,6 +284,15 @@ std::vector<OverlayLine> BuildOverlayLines() {
                           COLOR_NOT_DONE, PAD_LEFT });
     }
 
+    // Anything already lost goes near the top - it's the one thing here you
+    // can't fix later, so burying it under the checklists would be backwards.
+    if (g_settings.showMissable && !g_missed.empty()) {
+        lines.push_back({ L"Missed: " + std::to_wstring(g_missed.size()), COLOR_MISSED, PAD_LEFT });
+        for (size_t i = 0; i < g_missed.size(); i++) {
+            lines.push_back({ g_missed[i].Describe(), COLOR_MISSED, BOSS_INDENT });
+        }
+    }
+
     if (g_settings.showBosses) {
         lines.push_back({ L"Bosses Defeated: " + std::to_wstring(defeatedCount) + L" / " + std::to_wstring(bossCount),
                           COLOR_SUMMARY, PAD_LEFT });
@@ -274,6 +303,17 @@ std::vector<OverlayLine> BuildOverlayLines() {
         lines.push_back({ L"Bonfires Lit: " + std::to_wstring(litCount) + L" / " + std::to_wstring(bonfireCount),
                           COLOR_SUMMARY, PAD_LEFT });
         AppendGroupedLines(lines, g_tracked.bonfires, g_bonfireLit);
+    }
+
+    if (g_settings.showQuests) {
+        int questDone = 0;
+        for (size_t i = 0; i < g_questDone.size(); i++) {
+            if (g_questDone[i]) questDone++;
+        }
+        lines.push_back({ L"Quest Rewards: " + std::to_wstring(questDone) + L" / "
+                          + std::to_wstring(g_tracked.quests.size()),
+                          COLOR_SUMMARY, PAD_LEFT });
+        AppendGroupedLines(lines, g_tracked.quests, g_questDone);
     }
 
     // With everything switched off there'd be nothing to draw and the window
@@ -296,6 +336,22 @@ void FillDemoData() {
     for (size_t i = 0; i < g_bonfireLit.size(); i++) {
         g_bonfireLit[i] = (i < g_bonfireLit.size() / 2) ? 1 : 0;
     }
+    g_questDone.assign(g_tracked.quests.size(), 0);
+    for (size_t i = 0; i < g_questDone.size(); i++) {
+        g_questDone[i] = (i % 3 == 0) ? 1 : 0;
+    }
+
+    // Feed the real rules a made-up save so the warnings can be seen: pretend
+    // every boss in the first half is dead and no quest reward was collected.
+    std::map<uint32_t, bool> flagState;
+    for (size_t i = 0; i < g_tracked.bosses.size(); i++) {
+        flagState[g_tracked.bosses[i].flag] = g_bossDefeated[i] != 0;
+    }
+    for (size_t i = 0; i < g_tracked.quests.size(); i++) {
+        flagState[g_tracked.quests[i].flag] = false;
+    }
+    g_missed = FindMissed(g_tracked.missableRules, flagState);
+
     g_souls = 123456;
     g_soulsAvailable = true;
     g_connected = true;
@@ -514,23 +570,38 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 }
             }
             if (g_connected) {
-                // Both lists go out in one batch so the game is interrupted
+                // Every list goes out in one batch so the game is interrupted
                 // once per tick rather than once per list.
                 std::vector<uint32_t> flagIds = FlagsOf(g_tracked.bosses);
                 std::vector<uint32_t> bonfireIds = FlagsOf(g_tracked.bonfires);
+                std::vector<uint32_t> questIds = FlagsOf(g_tracked.quests);
                 flagIds.insert(flagIds.end(), bonfireIds.begin(), bonfireIds.end());
+                flagIds.insert(flagIds.end(), questIds.begin(), questIds.end());
 
                 std::vector<uint8_t> flags = ReadFlags(g_conn, flagIds);
 
-                size_t bossCount = g_tracked.bosses.size();
-                g_bossDefeated.assign(bossCount, 0);
-                for (size_t i = 0; i < bossCount && i < flags.size(); i++) {
-                    g_bossDefeated[i] = flags[i] ? 1 : 0;
+                // Remember every flag we read, so the missable rules can look
+                // up whatever they reference without a second trip.
+                std::map<uint32_t, bool> flagState;
+                for (size_t i = 0; i < flagIds.size() && i < flags.size(); i++) {
+                    flagState[flagIds[i]] = flags[i] != 0;
+                }
+
+                size_t at = 0;
+                g_bossDefeated.assign(g_tracked.bosses.size(), 0);
+                for (size_t i = 0; i < g_bossDefeated.size(); i++, at++) {
+                    if (at < flags.size()) g_bossDefeated[i] = flags[at] ? 1 : 0;
                 }
                 g_bonfireLit.assign(g_tracked.bonfires.size(), 0);
-                for (size_t i = 0; i < g_bonfireLit.size() && bossCount + i < flags.size(); i++) {
-                    g_bonfireLit[i] = flags[bossCount + i] ? 1 : 0;
+                for (size_t i = 0; i < g_bonfireLit.size(); i++, at++) {
+                    if (at < flags.size()) g_bonfireLit[i] = flags[at] ? 1 : 0;
                 }
+                g_questDone.assign(g_tracked.quests.size(), 0);
+                for (size_t i = 0; i < g_questDone.size(); i++, at++) {
+                    if (at < flags.size()) g_questDone[i] = flags[at] ? 1 : 0;
+                }
+
+                g_missed = FindMissed(g_tracked.missableRules, flagState);
 
                 g_soulsAvailable = ReadSouls(g_conn, g_souls);
             }
