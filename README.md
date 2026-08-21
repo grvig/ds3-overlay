@@ -143,6 +143,12 @@ against, unlike the bonfires - where having two sources is exactly what caught
 a wrong flag id. Treat them as provisional until `main.exe --watch` confirms
 them.
 
+A wrong flag id fails quietly: it simply reads as "not received" forever, so
+the missable rules never fire and the overlay looks perfectly happy. To stop
+that passing unnoticed, `main.exe` warns when a save has clearly made progress
+but not a single quest reward registered - that combination almost certainly
+means bad ids rather than a real playthrough.
+
 ## Settings
 
 Read from `overlay-settings.txt`, kept next to `overlay.exe`:
@@ -188,8 +194,9 @@ the game.
 3. **Ask the game directly.** Rather than guessing how boss-kill data is laid
    out in memory, the overlay writes a tiny snippet of machine code into the
    game and runs it, which calls the game's own "is this flag set?" function.
-   All 102 flags are checked in a single batch, split across several passes
-   automatically if they don't fit in one.
+   All 182 tracked flags go out in a single batch, so the game gets one extra
+   thread per tick rather than several. Longer lists are split automatically
+   rather than overflowing.
 4. **Draw it.** The results are rendered into a per-pixel-transparent window
    layered over the game.
 

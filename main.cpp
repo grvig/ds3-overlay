@@ -194,6 +194,7 @@ int main(int argc, char** argv) {
     std::cout << "  (" << g_tracked.missableRules.size() << " rules checked; these are"
               << " provisional - see data/missable.txt)" << std::endl;
 
+
     int bossCount = (int)g_tracked.bosses.size();
     int bonfireCount = (int)g_tracked.bonfires.size();
     int questCount = (int)g_tracked.quests.size();
@@ -207,6 +208,25 @@ int main(int argc, char** argv) {
     if (totalTracked > 0) {
         std::cout << "Completion:      " << (totalDone * 100 / totalTracked) << "%  ("
                   << totalDone << "/" << totalTracked << ")" << std::endl;
+    }
+
+    // A wrong questline flag id fails quietly: it just reads as "not
+    // received" forever, so the missable rules never fire and everything
+    // looks fine. If this save has clearly made progress but not one quest
+    // reward registered, bad ids are far likelier than a real playthrough,
+    // so say so rather than let it pass unnoticed.
+    bool madeProgress = bossesDefeated > 0 || bonfiresLit > 2;
+    if (madeProgress && questsDone == 0 && questCount > 0) {
+        std::cout << std::endl;
+        std::cout << "WARNING: " << bossesDefeated << " bosses and " << bonfiresLit
+                  << " bonfires registered, but 0 of " << questCount
+                  << " quest rewards did." << std::endl;
+        std::cout << "  The quest flag ids are probably wrong - they have never"
+                  << " been checked against a real save." << std::endl;
+        std::cout << "  Run \"main.exe --watch\", pick up a questline item, and"
+                  << " see which id actually fires." << std::endl;
+        std::cout << "  Until then, treat the MISSED section above as unreliable."
+                  << std::endl;
     }
 
     VirtualFreeEx(conn.process, conn.remoteBuffer, 0, MEM_RELEASE);
