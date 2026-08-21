@@ -125,9 +125,17 @@ static void TestBatchSafety() {
     Check(BatchCodeSize(perBatch + 1) + BATCH_GAP + (perBatch + 1) > BUFFER,
           "the batch limit is not actually the boundary");
 
-    // Both real lists must be handled in one pass.
-    Check(g_tracked.bosses.size() <= perBatch, "bosses no longer fit in one pass");
-    Check(g_tracked.bonfires.size() <= perBatch, "bonfires no longer fit in one pass");
+    // Everything tracked must go out in ONE pass at the real buffer size.
+    // Each extra pass is another thread started inside the game, and that is
+    // the riskiest thing this tool does.
+    size_t allTracked = g_tracked.bosses.size() + g_tracked.bonfires.size()
+                      + g_tracked.quests.size();
+    size_t realPerBatch = FlagsPerBatch(REMOTE_BUFFER_SIZE);
+    Check(allTracked <= realPerBatch,
+          "everything tracked (" + std::to_string(allTracked) + " flags) no longer fits in one "
+          "pass of " + std::to_string(realPerBatch) + " - that means extra threads in the game");
+    std::cout << "  all " << allTracked << " tracked flags fit in one pass (room for "
+              << realPerBatch << ")" << std::endl;
 
     // Lists too big for the buffer must split, not overflow.
     size_t small = FlagsPerBatch(1024);
@@ -138,9 +146,8 @@ static void TestBatchSafety() {
     Check(FlagsPerBatch(0) == 0, "zero-size buffer must yield nothing");
     Check(FlagsPerBatch(8) == 0, "tiny buffer must yield nothing");
 
-    std::cout << "  " << perBatch << " flags fit per 4096-byte pass; "
-              << g_tracked.bosses.size() << " bosses and " << g_tracked.bonfires.size()
-              << " bonfires each need one pass" << std::endl;
+    std::cout << "  " << perBatch << " flags would fit in a single 4096-byte pass"
+              << std::endl;
 }
 
 static void TestColumnLayout() {

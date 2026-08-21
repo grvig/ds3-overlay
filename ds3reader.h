@@ -207,6 +207,10 @@ uint8_t CallGetEventFlag(HANDLE process, BYTE* remoteBuffer, BYTE* functionAddr,
 // asserted against the real generated length before anything runs.
 const size_t BYTES_PER_FLAG_CHECK = 48;
 
+// Size of the scratch buffer carved out inside the game. Sized so every flag
+// we track fits in a single pass - see the note where it's allocated.
+const size_t REMOTE_BUFFER_SIZE = 64 * 1024;
+
 // Gap left between the end of the code and the start of the results. The two
 // must never overlap: the code is still executing while it writes results,
 // so a result landing on a not-yet-executed instruction corrupts the game's
@@ -458,9 +462,13 @@ bool ConnectToDs3(Ds3Connection& conn) {
         return false;
     }
 
-    // One page is plenty: anything longer than fits here is split into
-    // several passes rather than overflowing.
-    conn.remoteBufferSize = 4096;
+    // Sized so every flag we track fits in a single pass. Each pass means
+    // another thread started inside the game, and injecting into a running
+    // game is the riskiest thing here - it has closed the game before - so
+    // it's worth spending a few unused pages to do it once per tick instead
+    // of three times. 64KB covers well over a thousand flags; the lists
+    // would have to grow more than sevenfold before this splits again.
+    conn.remoteBufferSize = REMOTE_BUFFER_SIZE;
     conn.remoteBuffer = VirtualAllocEx(conn.process, nullptr, conn.remoteBufferSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
     if (conn.remoteBuffer == nullptr) {
         conn.remoteBufferSize = 0;
