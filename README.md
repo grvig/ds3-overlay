@@ -89,6 +89,15 @@ Reports the moment any tracked flag changes. Do the thing in game and see which
 entry fires - or see nothing fire, which means that entry's flag id is wrong.
 This is how the questline data should be verified.
 
+Everything it prints also goes to `watch-log.txt` next to the exe, so you can
+leave it running, play, and read back what fired afterwards rather than
+watching a console. It appends, so several sessions build up in one file, and
+it flushes after every line so nothing is lost if the game or the tool dies.
+
+It starts by listing every flag already set. Mid-playthrough that alone checks
+a lot of ids at once: anything listed that you know you haven't actually done
+points at a wrong id.
+
 ## The tracked data
 
 The lists live in `data/` as plain text, one entry per line:

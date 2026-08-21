@@ -2,6 +2,7 @@
 #include "tracked.h"
 #include <iostream>
 #include <map>
+#include <fstream>
 
 // Prints one line per entry, with a header whenever the group changes, and
 // returns how many were done. Mirrors how the overlay lays things out.
@@ -54,32 +55,59 @@ int RunWatch(Ds3Connection& conn) {
         }
     }
 
+    // Everything also goes to a file, because the point is to be playing
+    // while this runs - scrollback in a console you aren't looking at is no
+    // use afterwards.
+    std::wstring logPath = GetDataPath(L"../watch-log.txt");
+    std::wofstream log(logPath.c_str(), std::ios::app);
+    bool logging = log.is_open();
+
+    // Writes to the console and, when it opened, to the log as well.
+    auto report = [&](const std::wstring& text) {
+        std::wcout << text << std::endl;
+        if (logging) {
+            log << text << std::endl;
+            log.flush(); // losing findings to a crash would defeat the point
+        }
+    };
+
     std::cout << "Watching " << flagIds.size()
               << " flags. Do something in game and it will show up here." << std::endl;
+    if (logging) {
+        std::wcout << L"Also writing to " << logPath << std::endl;
+    } else {
+        std::cout << "(could not open the log file; console only)" << std::endl;
+    }
     std::cout << "Press Ctrl+C to stop." << std::endl << std::endl;
 
+    report(L"=== watch session started ===");
+
     std::vector<uint8_t> previous = ReadFlags(conn, flagIds);
+    int alreadySet = 0;
     for (size_t i = 0; i < previous.size(); i++) {
         if (previous[i]) {
-            std::wcout << L"  already set: " << labels[i] << std::endl;
+            alreadySet++;
+            report(L"  already set: " + std::to_wstring(flagIds[i]) + L"  " + labels[i]);
         }
     }
-    std::cout << "\n--- watching for changes ---" << std::endl;
+    report(L"  (" + std::to_wstring(alreadySet) + L" of "
+           + std::to_wstring(flagIds.size()) + L" already set)");
+    report(L"--- watching for changes ---");
 
     while (true) {
         Sleep(500);
 
         DWORD exitCode = 0;
         if (!GetExitCodeProcess(conn.process, &exitCode) || exitCode != STILL_ACTIVE) {
-            std::cout << "Game closed." << std::endl;
+            report(L"=== game closed ===");
             return 0;
         }
 
         std::vector<uint8_t> current = ReadFlags(conn, flagIds);
         for (size_t i = 0; i < current.size() && i < previous.size(); i++) {
             if (current[i] != previous[i]) {
-                std::wcout << (current[i] ? L"  SET   " : L"  UNSET ")
-                           << flagIds[i] << L"  " << labels[i] << std::endl;
+                report(std::wstring(current[i] ? L"  SET   " : L"  UNSET ")
+                       + std::to_wstring(flagIds[i]) + L"  " + labels[i]);
             }
         }
         previous = current;

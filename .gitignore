@@ -2,3 +2,4 @@
 *.o
 *.obj
 overlay-settings.txt
+watch-log.txt
