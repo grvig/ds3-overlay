@@ -259,6 +259,18 @@ std::vector<OverlayLine> BuildOverlayLines() {
             litCount++;
         }
     }
+    int questCount = 0;
+    for (size_t i = 0; i < g_questDone.size(); i++) {
+        if (g_questDone[i]) {
+            questCount++;
+        }
+    }
+    int dropCount = 0;
+    for (size_t i = 0; i < g_dropsDone.size(); i++) {
+        if (g_dropsDone[i]) {
+            dropCount++;
+        }
+    }
 
     // Overall completion across everything being tracked - the headline
     // number for a completionist run. Only counts sections that are actually
@@ -273,6 +285,14 @@ std::vector<OverlayLine> BuildOverlayLines() {
     if (g_settings.showBonfires) {
         totalTracked += bonfireCount;
         totalDone += litCount;
+    }
+    if (g_settings.showQuests) {
+        totalTracked += (int)g_tracked.quests.size();
+        totalDone += questCount;
+    }
+    if (g_settings.showNpcDrops) {
+        totalTracked += (int)g_tracked.npcDrops.size();
+        totalDone += dropCount;
     }
     if (totalTracked > 0) {
         int percent = (totalDone * 100) / totalTracked;
@@ -308,22 +328,14 @@ std::vector<OverlayLine> BuildOverlayLines() {
     }
 
     if (g_settings.showQuests) {
-        int questDone = 0;
-        for (size_t i = 0; i < g_questDone.size(); i++) {
-            if (g_questDone[i]) questDone++;
-        }
-        lines.push_back({ L"Quest Rewards: " + std::to_wstring(questDone) + L" / "
+        lines.push_back({ L"Quest Rewards: " + std::to_wstring(questCount) + L" / "
                           + std::to_wstring(g_tracked.quests.size()),
                           COLOR_SUMMARY, PAD_LEFT });
         AppendGroupedLines(lines, g_tracked.quests, g_questDone);
     }
 
     if (g_settings.showNpcDrops) {
-        int dropsDone = 0;
-        for (size_t i = 0; i < g_dropsDone.size(); i++) {
-            if (g_dropsDone[i]) dropsDone++;
-        }
-        lines.push_back({ L"NPC Drops: " + std::to_wstring(dropsDone) + L" / "
+        lines.push_back({ L"NPC Drops: " + std::to_wstring(dropCount) + L" / "
                           + std::to_wstring(g_tracked.npcDrops.size()),
                           COLOR_SUMMARY, PAD_LEFT });
         AppendGroupedLines(lines, g_tracked.npcDrops, g_dropsDone);

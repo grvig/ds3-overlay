@@ -42,6 +42,7 @@ int RunWatch(Ds3Connection& conn) {
         { &g_tracked.bosses,   "boss"    },
         { &g_tracked.bonfires, "bonfire" },
         { &g_tracked.quests,   "quest"   },
+        { &g_tracked.npcDrops, "drop"    },
     };
 
     // One flat list, so everything is read in a single pass per tick.
@@ -169,6 +170,10 @@ int main(int argc, char** argv) {
     std::vector<uint8_t> questFlags = ReadFlags(conn, FlagsOf(g_tracked.quests));
     int questsDone = PrintGroupedList(g_tracked.quests, questFlags, L"received", L"not received");
 
+    std::cout << "\n=== NPC DROPS ===" << std::endl;
+    std::vector<uint8_t> dropFlags = ReadFlags(conn, FlagsOf(g_tracked.npcDrops));
+    int dropsTaken = PrintGroupedList(g_tracked.npcDrops, dropFlags, L"taken", L"not taken");
+
     // Work out what's already been lost, from everything read above.
     std::map<uint32_t, bool> flagState;
     for (size_t i = 0; i < g_tracked.bosses.size() && i < bossFlags.size(); i++) {
@@ -198,13 +203,17 @@ int main(int argc, char** argv) {
     int bossCount = (int)g_tracked.bosses.size();
     int bonfireCount = (int)g_tracked.bonfires.size();
     int questCount = (int)g_tracked.quests.size();
-    int totalTracked = bossCount + bonfireCount;
-    int totalDone = bossesDefeated + bonfiresLit;
+    int dropCount = (int)g_tracked.npcDrops.size();
+    // Everything printed above counts towards the total, so the percentage
+    // matches what's on screen rather than a subset of it.
+    int totalTracked = bossCount + bonfireCount + questCount + dropCount;
+    int totalDone = bossesDefeated + bonfiresLit + questsDone + dropsTaken;
 
     std::cout << "\n=== TOTALS ===" << std::endl;
     std::cout << "Bosses defeated: " << bossesDefeated << " / " << bossCount << std::endl;
     std::cout << "Bonfires lit:    " << bonfiresLit << " / " << bonfireCount << std::endl;
     std::cout << "Quest rewards:   " << questsDone << " / " << questCount << std::endl;
+    std::cout << "NPC drops:       " << dropsTaken << " / " << dropCount << std::endl;
     if (totalTracked > 0) {
         std::cout << "Completion:      " << (totalDone * 100 / totalTracked) << "%  ("
                   << totalDone << "/" << totalTracked << ")" << std::endl;
