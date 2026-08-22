@@ -19,6 +19,7 @@ bool g_connected = false;
 std::vector<char> g_bossDefeated;
 std::vector<char> g_bonfireLit;
 std::vector<char> g_questDone;
+std::vector<char> g_dropsDone;
 
 // Questline rewards that can no longer be obtained, worked out from the rules
 // in data/missable.txt.
@@ -133,7 +134,7 @@ int MeasureRequiredWidth() {
     }
 
     const std::vector<TrackedEntry>* allLists[] = {
-        &g_tracked.bosses, &g_tracked.bonfires, &g_tracked.quests
+        &g_tracked.bosses, &g_tracked.bonfires, &g_tracked.quests, &g_tracked.npcDrops
     };
     for (auto* list : allLists) {
         std::wstring lastGroup;
@@ -158,6 +159,7 @@ int MeasureRequiredWidth() {
     widest = std::max(widest, MeasureLineWidth(measureDC, L"Bosses Defeated: 00 / 00", PAD_LEFT));
     widest = std::max(widest, MeasureLineWidth(measureDC, L"Bonfires Lit: 00 / 00", PAD_LEFT));
     widest = std::max(widest, MeasureLineWidth(measureDC, L"Quest Rewards: 000 / 000", PAD_LEFT));
+    widest = std::max(widest, MeasureLineWidth(measureDC, L"NPC Drops: 000 / 000", PAD_LEFT));
     widest = std::max(widest, MeasureLineWidth(measureDC, L"Missed: 00", PAD_LEFT));
     widest = std::max(widest, MeasureLineWidth(measureDC, L"Completion: 100%  (000/000)", PAD_LEFT));
     widest = std::max(widest, MeasureLineWidth(measureDC, L"Souls: 9999999999", PAD_LEFT));
@@ -316,6 +318,17 @@ std::vector<OverlayLine> BuildOverlayLines() {
         AppendGroupedLines(lines, g_tracked.quests, g_questDone);
     }
 
+    if (g_settings.showNpcDrops) {
+        int dropsDone = 0;
+        for (size_t i = 0; i < g_dropsDone.size(); i++) {
+            if (g_dropsDone[i]) dropsDone++;
+        }
+        lines.push_back({ L"NPC Drops: " + std::to_wstring(dropsDone) + L" / "
+                          + std::to_wstring(g_tracked.npcDrops.size()),
+                          COLOR_SUMMARY, PAD_LEFT });
+        AppendGroupedLines(lines, g_tracked.npcDrops, g_dropsDone);
+    }
+
     // With everything switched off there'd be nothing to draw and the window
     // would collapse to nothing, which looks like a crash. Say so instead.
     if (lines.empty()) {
@@ -339,6 +352,10 @@ void FillDemoData() {
     g_questDone.assign(g_tracked.quests.size(), 0);
     for (size_t i = 0; i < g_questDone.size(); i++) {
         g_questDone[i] = (i % 3 == 0) ? 1 : 0;
+    }
+    g_dropsDone.assign(g_tracked.npcDrops.size(), 0);
+    for (size_t i = 0; i < g_dropsDone.size(); i++) {
+        g_dropsDone[i] = (i % 2 == 0) ? 1 : 0;
     }
 
     // Feed the real rules a made-up save so the warnings can be seen: pretend
@@ -575,8 +592,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 std::vector<uint32_t> flagIds = FlagsOf(g_tracked.bosses);
                 std::vector<uint32_t> bonfireIds = FlagsOf(g_tracked.bonfires);
                 std::vector<uint32_t> questIds = FlagsOf(g_tracked.quests);
+                std::vector<uint32_t> dropIds = FlagsOf(g_tracked.npcDrops);
                 flagIds.insert(flagIds.end(), bonfireIds.begin(), bonfireIds.end());
                 flagIds.insert(flagIds.end(), questIds.begin(), questIds.end());
+                flagIds.insert(flagIds.end(), dropIds.begin(), dropIds.end());
 
                 std::vector<uint8_t> flags = ReadFlags(g_conn, flagIds);
 
@@ -599,6 +618,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 g_questDone.assign(g_tracked.quests.size(), 0);
                 for (size_t i = 0; i < g_questDone.size(); i++, at++) {
                     if (at < flags.size()) g_questDone[i] = flags[at] ? 1 : 0;
+                }
+                g_dropsDone.assign(g_tracked.npcDrops.size(), 0);
+                for (size_t i = 0; i < g_dropsDone.size(); i++, at++) {
+                    if (at < flags.size()) g_dropsDone[i] = flags[at] ? 1 : 0;
                 }
 
                 g_missed = FindMissed(g_tracked.missableRules, flagState);

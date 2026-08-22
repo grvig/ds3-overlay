@@ -1,0 +1,43 @@
+# One-time drops from named NPCs and invaders in Dark Souls III.
+#
+# Format: Item | event flag id | Who drops it
+#
+# These are the unique weapons and gear you only get by killing a specific
+# named character - Havel, Sword Master, the invaders, and so on. Separate
+# from quests.txt because they're not questline rewards: nothing is given to
+# you, and there's no ordering to get wrong.
+#
+# Sources: the Souls Modding Wiki DS3 event flag list ("One-time Lot" entries),
+# cross-checked against SoulSplitter's item-pickup list. All 28 ids appear in
+# both.
+#
+# STILL UNVERIFIED IN GAME, same caveat as quests.txt.
+#
+Grand Archives Key                             | 50006700 | Black Hand Gotthard
+Onikiri and Ubadachi                           | 50006705 | Black Hand Kamui
+Dragon Tooth and Havel's Greatshield           | 50006710 | Havel the Rock
+Uchigatana and Master's Set                    | 50006720 | Sword Master
+Spider Shield                                  | 50006730 | Brigand (Road of Sacrifices)
+Drakeblood Greatsword                          | 50006740 | Drakeblood Knight
+Ricard's Rapier                                | 50006750 | Naked Fencer (Archdragon Peak)
+Exile Greatsword                               | 50006760 | Exile Watchdog
+Great Club                                     | 50006770 | Exile Watchdog
+Heysel Pick and Xanthous Crown                 | 50006780 | Yellowfinger Heysel
+Manikin Claws                                  | 50006790 | Londor Pale Shade
+Golden Wing Crest Shield                       | 50006800 | Lion Knight Albert
+Sage's Crystal Staff                           | 50006810 | Daughter of Crystal Kriemhild
+Logan's Scroll                                 | 50006820 | Court Sorcerer
+Drang Twinspears                               | 50006830 | Drang Knight
+Knight Slayer's Ring                           | 50006840 | Knight Slayer Tsorig
+Fume Ultra Greatsword and Black Iron Greatshield | 50006845 | Knight Slayer Tsorig
+Dragonslayer's Axe                             | 50006850 | Creighton the Wanderer
+Murakumo                                       | 50006860 | Alva, Seeker of the Spurned
+Wolf Ring+3                                    | 50006970 | Alva, Seeker of the Spurned
+Barbed Straight Sword and Spiked Shield        | 50006870 | Longfinger Kirk
+Butcher Knife                                  | 50006880 | Isabella the Mad
+Floating Chaos                                 | 50006920 | Livid Pyromancer Dunnel
+Crucifix of the Mad King                       | 50006939 | Shira, Knight of Filianore
+White Birch Bow                                | 50006940 | Shira, Knight of Filianore
+Flame Fan                                      | 50006950 | Desert Pyromancer Zoey
+Ledo's Great Hammer                            | 50006960 | Silver Knight Ledo
+Blindfold Mask                                 | 50006980 | Moaning Knight

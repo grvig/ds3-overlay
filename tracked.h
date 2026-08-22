@@ -21,6 +21,11 @@ struct TrackedLists {
     // usable stand-in for how far that NPC's questline actually got.
     std::vector<TrackedEntry> quests;
 
+    // Unique gear dropped by named NPCs and invaders. Not questline rewards -
+    // nothing is given to you and there's no order to get wrong - so they're
+    // kept apart from quests.
+    std::vector<TrackedEntry> npcDrops;
+
     // Rules for spotting rewards that can no longer be obtained.
     std::vector<MissableRule> missableRules;
 
@@ -50,6 +55,7 @@ inline void LoadTrackedLists() {
     LoadOneInto(g_tracked, g_tracked.bosses, L"bosses.txt", "bosses.txt");
     LoadOneInto(g_tracked, g_tracked.bonfires, L"bonfires.txt", "bonfires.txt");
     LoadOneInto(g_tracked, g_tracked.quests, L"quests.txt", "quests.txt");
+    LoadOneInto(g_tracked, g_tracked.npcDrops, L"npc-drops.txt", "npc-drops.txt");
 
     LoadedRules rules = LoadMissableRules(L"missable.txt");
     g_tracked.missableRules = rules.rules;

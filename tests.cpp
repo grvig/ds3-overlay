@@ -120,12 +120,13 @@ static void TestDataLists() {
     CheckList("bosses", g_tracked.bosses);
     CheckList("bonfires", g_tracked.bonfires);
     CheckList("quests", g_tracked.quests);
+    CheckList("npc drops", g_tracked.npcDrops);
 
     // Entries can share a name across lists ("Iudex Gundyr" is both a boss
     // and a bonfire) but never a flag - those mean different things.
     std::set<uint32_t> seen;
     const std::vector<TrackedEntry>* lists[] = {
-        &g_tracked.bosses, &g_tracked.bonfires, &g_tracked.quests
+        &g_tracked.bosses, &g_tracked.bonfires, &g_tracked.quests, &g_tracked.npcDrops
     };
     for (auto* list : lists) {
         for (size_t i = 0; i < list->size(); i++) {
@@ -168,7 +169,7 @@ static void TestBatchSafety() {
     // Each extra pass is another thread started inside the game, and that is
     // the riskiest thing this tool does.
     size_t allTracked = g_tracked.bosses.size() + g_tracked.bonfires.size()
-                      + g_tracked.quests.size();
+                      + g_tracked.quests.size() + g_tracked.npcDrops.size();
     size_t realPerBatch = FlagsPerBatch(REMOTE_BUFFER_SIZE);
     Check(allTracked <= realPerBatch,
           "everything tracked (" + std::to_string(allTracked) + " flags) no longer fits in one "
@@ -260,6 +261,7 @@ static void TestDataFileParsing() {
         { L"bosses.txt",   (int)g_tracked.bosses.size(),   "bosses.txt" },
         { L"bonfires.txt", (int)g_tracked.bonfires.size(), "bonfires.txt" },
         { L"quests.txt",   (int)g_tracked.quests.size(),   "quests.txt" },
+        { L"npc-drops.txt", (int)g_tracked.npcDrops.size(), "npc-drops.txt" },
     };
     for (auto& f : files) {
         LoadedList loaded = LoadTrackedList(f.file);
@@ -300,7 +302,7 @@ static void TestMissableRules() {
     // rule can never fire and is silently dead.
     std::set<uint32_t> known;
     const std::vector<TrackedEntry>* lists[] = {
-        &g_tracked.bosses, &g_tracked.bonfires, &g_tracked.quests
+        &g_tracked.bosses, &g_tracked.bonfires, &g_tracked.quests, &g_tracked.npcDrops
     };
     for (auto* list : lists) {
         for (size_t i = 0; i < list->size(); i++) {

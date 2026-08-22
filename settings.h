@@ -31,6 +31,7 @@ struct OverlaySettings {
     // warnings are short and are the point of tracking quests at all, so
     // those stay on.
     bool showQuests = false;
+    bool showNpcDrops = false;
     bool showMissable = true;
 };
 
@@ -138,6 +139,8 @@ OverlaySettings LoadSettings() {
             ApplyBoolSetting(value, settings.showBonfires);
         } else if (key == "showQuests") {
             ApplyBoolSetting(value, settings.showQuests);
+        } else if (key == "showNpcDrops") {
+            ApplyBoolSetting(value, settings.showNpcDrops);
         } else if (key == "showMissable") {
             ApplyBoolSetting(value, settings.showMissable);
         }
@@ -168,6 +171,7 @@ bool SaveSettings(const OverlaySettings& settings) {
     file << "showBosses=" << (settings.showBosses ? "true" : "false") << "\n";
     file << "showBonfires=" << (settings.showBonfires ? "true" : "false") << "\n";
     file << "showQuests=" << (settings.showQuests ? "true" : "false") << "\n";
+    file << "showNpcDrops=" << (settings.showNpcDrops ? "true" : "false") << "\n";
     file << "showMissable=" << (settings.showMissable ? "true" : "false") << "\n";
     return file.good();
 }
