@@ -14,6 +14,7 @@
 
 #include <iostream>
 #include <set>
+#include <map>
 #include <string>
 #include <vector>
 #include <cstring>
@@ -47,6 +48,44 @@ static void CheckList(const std::string& label, const std::vector<TrackedEntry>&
         bool shopLot   = flag >= 73000000 && flag <= 73999999;
         Check(worldFlag || questLot || shopLot,
               label + ": flag " + std::to_string(flag) + " out of range at " + std::to_string(i));
+    }
+
+    // The same item name on two different flags usually means a line was
+    // copied and only half-edited. Cross-checking the quest list against a
+    // second source turned this up for real: "Twinkling Dragon Torso Stone"
+    // sat on two flags, and one of them was actually the Head Stone.
+    //
+    // A few items genuinely do come from more than one person - Siegward and
+    // Lapp both hand out Siegbrau and a Titanite Slab - so those are listed
+    // here rather than left to trip the check every run.
+    //
+    // Note this only catches exact repeats. The same audit also found
+    // "Silver Mask" listed alone on one flag and inside a longer name on
+    // another, which this will not see; that class still needs a second
+    // source to catch.
+    static const wchar_t* SHARED_BY_DESIGN[] = {
+        L"Siegbrau (1)", L"Siegbrau (2)", L"Titanite Slab",
+    };
+    std::map<std::wstring, size_t> firstSeenAt;
+    for (size_t i = 0; i < entries.size(); i++) {
+        bool allowed = false;
+        for (const wchar_t* shared : SHARED_BY_DESIGN) {
+            if (entries[i].name == shared) {
+                allowed = true;
+                break;
+            }
+        }
+        if (allowed) {
+            continue;
+        }
+        auto seen = firstSeenAt.find(entries[i].name);
+        if (seen == firstSeenAt.end()) {
+            firstSeenAt[entries[i].name] = i;
+        } else {
+            Check(false, label + ": the same name is on two flags (entries "
+                         + std::to_string(seen->second) + " and " + std::to_string(i)
+                         + ") - one of them is probably the wrong item");
+        }
     }
 
     // The overlay prints a header whenever the group changes, so a group that
