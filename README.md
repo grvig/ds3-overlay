@@ -135,13 +135,17 @@ wrongly reassures you costs a playthrough.
 | --- | --- | --- |
 | Bosses | Grand Archives cheat table | Yes |
 | Bonfires | SoulSplitter, cross-checked against the cheat table | No |
-| Questline rewards | Souls Modding Wiki only | **No** |
+| Questline rewards | Souls Modding Wiki + SoulSplitter (all 80 ids agree) | **No** |
 | Missable rules | Hand-written | **No** |
 
-The questline flags come from a single source with nothing to cross-check
-against, unlike the bonfires - where having two sources is exactly what caught
-a wrong flag id. Treat them as provisional until `main.exe --watch` confirms
-them.
+The questline flags have since been cross-checked against a second, independent
+source. All 80 ids appear in both, and the comparison corrected four entries
+that were wrong here - including two items listed under the wrong name and one
+credited to the wrong NPC. Details are in the header of `data/quests.txt`.
+
+Two sources agreeing rules out transcription slips, not a shared upstream
+mistake, so these are still worth confirming with `main.exe --watch` before
+relying on the missable warnings built on top of them.
 
 A wrong flag id fails quietly: it simply reads as "not received" forever, so
 the missable rules never fire and the overlay looks perfectly happy. To stop

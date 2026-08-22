@@ -5,25 +5,35 @@
 # reliable stand-in for how far a questline has actually progressed - getting
 # Siegward's Storm Ruler means you reached the Yhorm stage with him alive.
 #
-# Source: the Souls Modding Wiki DS3 event flag list.
+# Sources: the Souls Modding Wiki DS3 event flag list, cross-checked against
+# SoulSplitter's item-pickup list. All 80 flag ids below appear in both.
 #
-# WARNING: unlike bosses.txt and bonfires.txt, these ids come from a SINGLE
-# source and have NOT been checked against a real save yet. Treat them as
-# provisional - if an entry never lights up in game, suspect the id here
-# before suspecting the code.
+# The cross-check corrected four entries where this file had been wrong:
+#   50006110  "Princess Ring"  -> "Priestess Ring" (no such item as the former)
+#   50006091  "Silver Mask"    -> "Lift Chamber Key" (Silver Mask was listed twice)
+#   50006072  "...Torso Stone" -> "...Head Stone" (Torso Stone was listed twice)
+#   50006193  Dark Sigil moved from Anri to Yoel, who actually gives it
+#
+# Known remaining disagreement, left as-is because both readings are defensible:
+# where a reward is a full armour set, this file names the set ("Catarina Set")
+# and SoulSplitter names the first piece ("Catarina Helm"). Same flag either way.
+#
+# STILL UNVERIFIED IN GAME. Two independent sources agreeing rules out
+# transcription slips, but not a shared upstream mistake. Confirm with
+# "main.exe --watch" before trusting the missable warnings built on these.
 #
 Eyes of a Fire Keeper                      | 50006020 | Fire Keeper
 Anri's Straight Sword                      | 50006030 | Anri of Astora
 Ring of the Evil Eye                       | 50006190 | Anri of Astora
-Dark Sigil                                 | 50006193 | Anri of Astora
 Skull Ring                                 | 50006031 | Ludleth of Courland
+Dark Sigil                                 | 50006193 | Yoel of Londor
 Morion Blade                               | 50006040 | Yuria of Londor
 Darkdrift (Lord of Hollow)                 | 50006041 | Yuria of Londor
 Yuria's Set (Lord of Hollow)               | 50006042 | Yuria of Londor
 Yuria's Ashes                              | 50006043 | Yuria of Londor
 Yorshka's Chime                            | 50006060 | Company Captain Yorshka
 Heavy Gem                                  | 50006070 | Hawkwood the Deserter
-Twinkling Dragon Torso Stone               | 50006072 | Hawkwood the Deserter
+Twinkling Dragon Head Stone                | 50006072 | Hawkwood the Deserter
 Farron Ring                                | 50006073 | Hawkwood the Deserter
 Hawkwood Shield                            | 50006074 | Hawkwood the Deserter
 Twinkling Dragon Torso Stone               | 50006071 | Archdragon Peak Altar
@@ -32,11 +42,11 @@ Sunset Shield                              | 50006081 | Sirris of the Sunless Re
 Sunless Talisman                           | 50006082 | Sirris of the Sunless Realms
 Sunset Set                                 | 50006083 | Sirris of the Sunless Realms
 Red Eye Orb                                | 50006090 | Ringfinger Leonhard
-Silver Mask                                | 50006091 | Ringfinger Leonhard
+Lift Chamber Key                           | 50006091 | Ringfinger Leonhard
 Black Eye Orb                              | 50006092 | Ringfinger Leonhard
 Soul of Rosaria & Crescent Moon Sword & Silver Mask | 50006093 | Ringfinger Leonhard
 Hawkwood's Swordgrass                      | 50006100 | Andre
-Princess Ring                              | 50006110 | Shrine Handmaid
+Priestess Ring                             | 50006110 | Shrine Handmaid
 Blue Tearstone Ring                        | 50006120 | Greirat
 Greirat's Ashes                            | 50006121 | Greirat
 Young Dragon Ring                          | 50006130 | Orbeck of Vinheim
