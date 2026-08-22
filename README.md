@@ -9,6 +9,7 @@ Currently tracks:
 - Every main boss in the base game and both DLCs (25), marked green once defeated
 - Every bonfire in the base game and both DLCs (77), marked green once lit
 - Questline rewards for 30 NPCs (80 items)
+- Unique gear dropped by 24 named NPCs and invaders (28 items)
 - **Questline rewards you can no longer get**, worked out from your actual save
 - Per-area progress on each heading, so a finished area is obvious at a glance
 - An overall completion percentage
@@ -111,6 +112,7 @@ Name | flag id | Group
 | `data/bosses.txt` | Boss "defeated" flags |
 | `data/bonfires.txt` | Bonfire "lit" flags |
 | `data/quests.txt` | Questline reward flags |
+| `data/npc-drops.txt` | Unique drops from named NPCs and invaders |
 | `data/missable.txt` | Rules for what closes off what |
 
 Blank lines and `#` comments are ignored, and anything malformed is reported
@@ -136,6 +138,7 @@ wrongly reassures you costs a playthrough.
 | Bosses | Grand Archives cheat table | Yes |
 | Bonfires | SoulSplitter, cross-checked against the cheat table | No |
 | Questline rewards | Souls Modding Wiki + SoulSplitter (all 80 ids agree) | **No** |
+| NPC drops | Souls Modding Wiki + SoulSplitter (all 28 ids agree) | **No** |
 | Missable rules | Hand-written | **No** |
 
 The questline flags have since been cross-checked against a second, independent
@@ -174,10 +177,14 @@ showBonfires=true
 | `showBosses` | Show the boss list |
 | `showBonfires` | Show the bonfire list |
 | `showQuests` | Show the full questline reward list (off by default - it's long) |
+| `showNpcDrops` | Show unique drops from named NPCs (off by default) |
 | `showMissable` | Show rewards you can no longer get (on by default) |
 
 Turning a section off shrinks the overlay to suit, which is the simplest way to
 make it less intrusive. `true/false`, `yes/no`, `on/off` and `1/0` all work.
+
+The completion percentage covers whichever sections are switched on, so turning
+one off doesn't leave a total that can never reach 100%.
 
 Moving the overlay with `F9` rewrites this file, so wherever you leave it is
 where it comes back. Delete the file to return to defaults - a missing or
@@ -198,7 +205,7 @@ the game.
 3. **Ask the game directly.** Rather than guessing how boss-kill data is laid
    out in memory, the overlay writes a tiny snippet of machine code into the
    game and runs it, which calls the game's own "is this flag set?" function.
-   All 182 tracked flags go out in a single batch, so the game gets one extra
+   All 210 tracked flags go out in a single batch, so the game gets one extra
    thread per tick rather than several. Longer lists are split automatically
    rather than overflowing.
 4. **Draw it.** The results are rendered into a per-pixel-transparent window
